@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Rhythmane.generated.h"
+#include "RhythmLane.generated.h"
 
 class USphereComponent;
 class USplineComponent;
@@ -17,7 +17,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMiss, ELane, Lane, int32, MissCo
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnJumpscare);
 
 UCLASS()
-class YOURPROJECT_API ARhythmLane : public AActor   // keep whatever _API name unreal made
+class DANCEDANCEDIE_API ARhythmLane : public AActor
 {
 	GENERATED_BODY()
 
@@ -45,4 +45,16 @@ public:
 	// teammates bind to these
 	UPROPERTY(BlueprintAssignable) FOnHit OnHit;
 	UPROPERTY(BlueprintAssignable) FOnMiss OnMiss;
-	UPROPERTY(BlueprintAssignable) FOnJumpscare
+	UPROPERTY(BlueprintAssignable) FOnJumpscare OnJumpscare;
+
+	// call on key press, true if a note was in the hit zone
+	UFUNCTION(BlueprintCallable, Category = "Rhythm")
+	bool Judge(ELane Lane);
+
+	// call when a note slips past the hit zone without being pressed
+	UFUNCTION(BlueprintCallable, Category = "Rhythm")
+	void RegisterMiss(ELane Lane);
+
+	UFUNCTION(BlueprintCallable, Category = "Rhythm")
+	void ResetSong();
+};

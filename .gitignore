@@ -1,5 +1,7 @@
 /.vscode
-/Content
+/.vs
+/Binaries
 /DerivedDataCache
 /Intermediate
 /Saved
+*.sln
