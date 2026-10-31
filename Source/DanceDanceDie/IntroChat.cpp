@@ -1,4 +1,5 @@
 #include "IntroChat.h"
+#include "LoadingScreen.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
@@ -458,6 +459,9 @@ void AIntroChatGameMode::BeginPlay()
 void AIntroChatGameMode::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// chat starts only once the loading screen is gone
+	if (ULoadingScreenSubsystem::IsShowing(this)) { return; }
 
 	APlayerController* PC = GetWorld()->GetFirstPlayerController();
 	if (!PC) { return; }

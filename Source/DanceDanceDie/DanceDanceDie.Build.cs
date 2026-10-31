@@ -8,7 +8,7 @@ public class DanceDanceDie : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "UMG", "Slate", "SlateCore" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "UMG", "Slate", "SlateCore", "MoviePlayer", "DeveloperSettings", "RenderCore" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 
