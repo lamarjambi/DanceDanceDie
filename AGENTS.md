@@ -5,8 +5,8 @@
 - Measure perf in **Standalone**, not PIE. `stat unit` → if GPU ms is highest, it's rendering.
 
 ## Rendering conventions (Config/DefaultEngine.ini)
-- No Lumen (GI=0), no Virtual Shadow Maps, no Nanite, no mesh distance fields, no AA.
-- 3D renders at `r.ScreenPercentage=25` with nearest-neighbor upscale (`r.Upscale.Quality=0`).
+- No Lumen (GI=0), no Virtual Shadow Maps, no Nanite, no mesh distance fields. AA = FXAA (cheap; reduces shimmer in the city).
+- 3D renders at `r.ScreenPercentage=60` with nearest-neighbor upscale (`r.Upscale.Quality=0`).
   UI (UMG/Slate) still draws at native resolution → stays sharp.
 - Don't change the window resolution for the retro look (breaks UI scale + loading screen). Use screen percentage.
 
@@ -19,3 +19,5 @@
 ## Scripts
 - Editor Python lives in `Scripts/`. Run from the editor's Python box:
   `exec(open(unreal.Paths.project_dir()+'Scripts/<name>.py').read())`
+- Rendered rows should be ~2x the effect's 180 rows or more. Fewer (e.g. 25% → ~233 rows) = uneven, choppy blocks,
+  worst in the city (thin windows/signs/reflections). Club looks fine at any %.
