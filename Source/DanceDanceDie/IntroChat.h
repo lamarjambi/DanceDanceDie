@@ -118,10 +118,10 @@ public:
 	TArray<FIntroChatMessage> Messages;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
-	FString ChatTitle = TEXT("halloween Booooooooor Crawl");
+	FString ChatTitle = TEXT("Halloween Booooooooor Crawl");
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
-	FString ChatSubtitle = TEXT("Mateo, Ava, Cass, Ade");
+	FString ChatSubtitle = TEXT("Mateo, Ava, Cass, Ade, You");
 
 	// level opened when the chat ends or is skipped
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")

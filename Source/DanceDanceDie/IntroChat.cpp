@@ -231,6 +231,8 @@ void UIntroChatWidget::ShowTyping(const FString& Sender)
 	UTextBlock* Dots = nullptr;
 	TypingBubble = MakeBubble(Sender, TEXT("•"), false, Dots);
 	TypingDots = Dots;
+	// wrap would lock the bubble to the 1-dot width and stack dots vertically
+	TypingDots->SetAutoWrapText(false);
 	PushWidget(TypingBubble, false, false);
 }
 
@@ -434,7 +436,7 @@ AIntroChatGameMode::AIntroChatGameMode()
 	Add(TEXT("Cass"), TEXT("that's literally just your outfit"), 0.7f, 0.9f);
 	Add(TEXT("Ava"),  TEXT("exactly. just lesbianism"), 0.8f, 1.3f);
 	Add(TEXT("Cass"), TEXT("@michelle you better be in costume"), 0.8f, 1.4f);
-	Add(TEXT("Mateo"),   TEXT("club is off jefferson. no sign, just the red door"), 1.0f, 1.4f);
+	Add(TEXT("Mateo"),   TEXT("bar is called ultra bar, neon green and pink sign"), 1.0f, 1.4f);
 	Add(TEXT("Ava"),  TEXT("we're heading in"), 0.6f, 1.6f);
 	Add(TEXT("Mateo"),   TEXT("it's sooo quiet in here lol"), 1.2f, 1.2f);
 	Add(TEXT("Ade"), TEXT("wait where is everyone"), 0.7f, 0.8f);
