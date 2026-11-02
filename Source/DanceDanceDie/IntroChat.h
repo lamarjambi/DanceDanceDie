@@ -15,6 +15,7 @@ class UTextBlock;
 class UWidget;
 class USoundBase;
 class UTexture2D;
+class UAudioComponent;
 
 USTRUCT(BlueprintType)
 struct FIntroChatMessage
@@ -52,6 +53,7 @@ public:
 	FString ChatSubtitle;
 	TObjectPtr<USoundBase> PingSound;
 	TObjectPtr<USoundBase> CreepySound;
+	TObjectPtr<USoundBase> TypingSound;
 	TObjectPtr<UTexture2D> Background;
 	float EndHoldTime = 2.f;
 	float FadeOutTime = 1.5f;
@@ -97,6 +99,7 @@ private:
 	UPROPERTY() TObjectPtr<UWidget> TypingBubble;
 	UPROPERTY() TObjectPtr<UTextBlock> TypingDots;
 	UPROPERTY() TObjectPtr<UObject> HeavyFont;
+	UPROPERTY() TObjectPtr<UAudioComponent> TypingAudio;
 
 	TArray<FBubble> Bubbles;
 	EPhase Phase = EPhase::FadeIn;
@@ -127,9 +130,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
 	FName NextLevel = TEXT("NightCityCreator");
 
-	// plays on every message 
+	// plays on every friend message (receiving)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
 	TObjectPtr<USoundBase> PingSound;
+
+	// loops while the typing dots bubble is up, stops when the msg lands
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
+	TObjectPtr<USoundBase> TypingSound;
 
 	// plays once on the first creepy message 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")

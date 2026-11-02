@@ -2,6 +2,7 @@
 #include "LoadingScreen.h"
 
 #include "Blueprint/WidgetTree.h"
+#include "Components/AudioComponent.h"
 #include "Components/Border.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
@@ -234,10 +235,19 @@ void UIntroChatWidget::ShowTyping(const FString& Sender)
 	// wrap would lock the bubble to the 1-dot width and stack dots vertically
 	TypingDots->SetAutoWrapText(false);
 	PushWidget(TypingBubble, false, false);
+	if (TypingSound)
+	{
+		TypingAudio = UGameplayStatics::SpawnSound2D(this, TypingSound);
+	}
 }
 
 void UIntroChatWidget::HideTyping()
 {
+	if (TypingAudio)
+	{
+		TypingAudio->Stop();
+		TypingAudio = nullptr;
+	}
 	if (!TypingBubble) { return; }
 	Bubbles.RemoveAll([this](const FBubble& B) { return B.W == TypingBubble; });
 	TypingBubble->RemoveFromParent();
@@ -258,20 +268,21 @@ void UIntroChatWidget::ShowMessage(const FIntroChatMessage& M)
 		PushWidget(MakeBubble(M.Sender, M.Body, M.bCreepy, Unused), M.bCreepy, false);
 	}
 
+	if (PingSound && !bSystem)
+	{
+		UGameplayStatics::PlaySound2D(this, PingSound);
+	}
 	if (M.bCreepy && !bPlayedCreepy && CreepySound)
 	{
 		bPlayedCreepy = true;
 		UGameplayStatics::PlaySound2D(this, CreepySound);
-	}
-	else if (PingSound && !bSystem)
-	{
-		UGameplayStatics::PlaySound2D(this, PingSound);
 	}
 }
 
 void UIntroChatWidget::Skip()
 {
 	if (Phase == EPhase::FadeOut || Phase == EPhase::Done) { return; }
+	if (TypingAudio) { TypingAudio->Stop(); TypingAudio = nullptr; }
 	Phase = EPhase::FadeOut;
 	PhaseTime = 0.f;
 }
@@ -417,6 +428,10 @@ AIntroChatGameMode::AIntroChatGameMode()
 
 	static ConstructorHelpers::FObjectFinder<USoundBase> Glitch(TEXT("/Game/Rhythm/Audio/glitch-click.glitch-click"));
 	CreepySound = Glitch.Object;
+	static ConstructorHelpers::FObjectFinder<USoundBase> Receiving(TEXT("/Game/UI/Audio/receiving.receiving"));
+	PingSound = Receiving.Object;
+	static ConstructorHelpers::FObjectFinder<USoundBase> Typing(TEXT("/Game/UI/Audio/typing.typing"));
+	TypingSound = Typing.Object;
 
 	auto Add = [this](const TCHAR* Sender, const TCHAR* Body, float Typing, float Hold, bool bCreepy = false)
 	{
@@ -477,6 +492,7 @@ void AIntroChatGameMode::Tick(float DeltaSeconds)
 		Chat->ChatSubtitle = ChatSubtitle;
 		Chat->PingSound = PingSound;
 		Chat->CreepySound = CreepySound;
+		Chat->TypingSound = TypingSound;
 		Chat->Background = Background;
 		Chat->EndHoldTime = EndHoldTime;
 		Chat->FadeOutTime = FadeOutTime;
