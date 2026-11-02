@@ -13,6 +13,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/Engine.h"
+#include "Engine/Font.h"
 #include "Engine/Texture2D.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -40,10 +41,12 @@ void UIntroChatWidget::NativeOnInitialized()
 	Super::NativeOnInitialized();
 	check(WidgetTree);
 
-	HeavyFont = LoadObject<UObject>(nullptr, TEXT("/Game/UI/Fonts/Rubik-Black_Font.Rubik-Black_Font"));
+	// font comes from BP_IntroChatGameMode > Chat Font
+	const AIntroChatGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AIntroChatGameMode>() : nullptr;
+	HeavyFont = GM ? GM->ChatFont.Get() : nullptr;
 	if (!HeavyFont)
 	{
-		UE_LOG(LogIntroChat, Error, TEXT("Rubik-Black_Font missing, falling back to Roboto Bold"));
+		UE_LOG(LogIntroChat, Error, TEXT("IntroChat: Chat Font not set, falling back to Roboto"));
 	}
 
 	Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("Root"));
@@ -64,10 +67,10 @@ void UIntroChatWidget::NativeOnInitialized()
 	// header
 	UVerticalBox* Header = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Header"));
 	TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
-	TitleText->SetFont(SenderFont(24));
+	TitleText->SetFont(SenderFont(34));
 	TitleText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
 	SubtitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Subtitle"));
-	SubtitleText->SetFont(BodyFont(14));
+	SubtitleText->SetFont(BodyFont(19));
 	SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(0.55f, 0.55f, 0.6f, 1.f)));
 	Header->AddChildToVerticalBox(TitleText);
 	Header->AddChildToVerticalBox(SubtitleText);
@@ -92,7 +95,7 @@ void UIntroChatWidget::NativeOnInitialized()
 	// skip hint
 	UTextBlock* Hint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SkipHint"));
 	Hint->SetText(FText::FromString(TEXT("press space to skip")));
-	Hint->SetFont(BodyFont(13));
+	Hint->SetFont(BodyFont(18));
 	Hint->SetColorAndOpacity(FSlateColor(FLinearColor(1.f, 1.f, 1.f, 0.25f)));
 	{
 		UCanvasPanelSlot* S = Root->AddChildToCanvas(Hint);
@@ -144,14 +147,12 @@ FLinearColor UIntroChatWidget::SenderColor(const FString& Sender) const
 
 FSlateFontInfo UIntroChatWidget::SenderFont(int32 Size) const
 {
-	FSlateFontInfo F = HeavyFont ? FSlateFontInfo(HeavyFont.Get(), Size) : FCoreStyle::GetDefaultFontStyle("Bold", Size);
-	F.LetterSpacing = 30;
-	return F;
+	return HeavyFont ? FSlateFontInfo(HeavyFont.Get(), Size) : FCoreStyle::GetDefaultFontStyle("Bold", Size);
 }
 
 FSlateFontInfo UIntroChatWidget::BodyFont(int32 Size) const
 {
-	return FCoreStyle::GetDefaultFontStyle("Regular", Size);
+	return HeavyFont ? FSlateFontInfo(HeavyFont.Get(), Size) : FCoreStyle::GetDefaultFontStyle("Regular", Size);
 }
 
 UWidget* UIntroChatWidget::MakeBubble(const FString& Sender, const FString& Body, bool bCreepy, UTextBlock*& OutBody)
@@ -174,13 +175,13 @@ UWidget* UIntroChatWidget::MakeBubble(const FString& Sender, const FString& Body
 
 	UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	NameText->SetText(FText::FromString(Sender.ToUpper()));
-	NameText->SetFont(SenderFont(11));
+	NameText->SetFont(SenderFont(16));
 	NameText->SetColorAndOpacity(FSlateColor(bCreepy ? FLinearColor(1.f, 0.2f, 0.2f) : SenderColor(Sender)));
 	V->AddChildToVerticalBox(NameText)->SetPadding(FMargin(0.f, 0.f, 0.f, 3.f));
 
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Text->SetText(FText::FromString(Body));
-	Text->SetFont(BodyFont(21));
+	Text->SetFont(BodyFont(28));
 	Text->SetColorAndOpacity(FSlateColor(bCreepy ? FLinearColor(1.f, 0.85f, 0.85f) : FLinearColor::White));
 	Text->SetAutoWrapText(true);
 	V->AddChildToVerticalBox(Text);
@@ -195,8 +196,7 @@ UWidget* UIntroChatWidget::MakeSystemLine(const FString& Body)
 {
 	UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	T->SetText(FText::FromString(Body));
-	FSlateFontInfo F = FCoreStyle::GetDefaultFontStyle("Italic", 14);
-	T->SetFont(F);
+	T->SetFont(BodyFont(19));
 	T->SetColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.65f, 1.f)));
 	return T;
 }
@@ -432,6 +432,8 @@ AIntroChatGameMode::AIntroChatGameMode()
 	PingSound = Receiving.Object;
 	static ConstructorHelpers::FObjectFinder<USoundBase> Typing(TEXT("/Game/UI/Audio/typing.typing"));
 	TypingSound = Typing.Object;
+	static ConstructorHelpers::FObjectFinder<UFont> Vt323(TEXT("/Game/UI/Fonts/VT323-Regular_Font.VT323-Regular_Font"));
+	ChatFont = Vt323.Object;
 
 	auto Add = [this](const TCHAR* Sender, const TCHAR* Body, float Typing, float Hold, bool bCreepy = false)
 	{

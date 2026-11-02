@@ -16,6 +16,7 @@ class UWidget;
 class USoundBase;
 class UTexture2D;
 class UAudioComponent;
+class UFont;
 
 USTRUCT(BlueprintType)
 struct FIntroChatMessage
@@ -141,6 +142,10 @@ public:
 	// plays once on the first creepy message 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
 	TObjectPtr<USoundBase> CreepySound;
+
+	// every text in the chat uses this (title, names, messages, hint)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
+	TObjectPtr<UFont> ChatFont;
 
 	// michelle as bgk
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
