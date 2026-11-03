@@ -41,6 +41,10 @@ struct FIntroChatMessage
 	// red bubble + jitter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chat")
 	bool bCreepy = false;
+
+	// optional photo shown in the bubble (body can be empty for photo-only)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chat")
+	TObjectPtr<UTexture2D> Photo;
 };
 
 UCLASS()
@@ -58,6 +62,7 @@ public:
 	TObjectPtr<UTexture2D> Background;
 	float EndHoldTime = 2.f;
 	float FadeOutTime = 1.5f;
+	FLinearColor NameColor = FLinearColor::White;
 
 	// driven by the game mode tick
 	void Step(float Dt);
@@ -79,15 +84,15 @@ private:
 		bool bCreepy = false;
 		bool bSystem = false;
 		float Dim = 1.f;
+		int32 Weight = 1; // photos take more room in the stack
 	};
 
-	UWidget* MakeBubble(const FString& Sender, const FString& Body, bool bCreepy, UTextBlock*& OutBody);
+	UWidget* MakeBubble(const FString& Sender, const FString& Body, bool bCreepy, UTexture2D* Photo, UTextBlock*& OutBody);
 	UWidget* MakeSystemLine(const FString& Body);
-	void PushWidget(UWidget* W, bool bCreepy, bool bSystem);
+	void PushWidget(UWidget* W, bool bCreepy, bool bSystem, int32 Weight = 1);
 	void ShowTyping(const FString& Sender);
 	void HideTyping();
 	void ShowMessage(const FIntroChatMessage& M);
-	FLinearColor SenderColor(const FString& Sender) const;
 	FSlateFontInfo SenderFont(int32 Size) const;
 	FSlateFontInfo BodyFont(int32 Size) const;
 
@@ -146,6 +151,10 @@ public:
 	// every text in the chat uses this (title, names, messages, hint)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
 	TObjectPtr<UFont> ChatFont;
+
+	// one color for every name label (creepy msgs stay red)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
+	FLinearColor NameColor = FLinearColor(0.62f, 0.62f, 0.68f, 1.f);
 
 	// michelle as bgk
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")

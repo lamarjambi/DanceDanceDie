@@ -32,6 +32,8 @@ namespace IntroChat
 	constexpr int32 BrightCount = 4; // newest N stay full opacity, older ones dim
 	constexpr float DimOpacity = 0.4f;
 	constexpr float BubbleMaxWidth = 520.f;
+	constexpr float PhotoWidth = 240.f;
+	constexpr int32 PhotoWeight = 3; // a photo counts as 3 text bubbles toward MaxBubbles
 }
 
 // ---------------------------------------------------------------- widget
@@ -131,20 +133,6 @@ void UIntroChatWidget::NativeConstruct()
 	PhaseTime = 0.f;
 }
 
-FLinearColor UIntroChatWidget::SenderColor(const FString& Sender) const
-{
-	static const FLinearColor Palette[] = {
-		FLinearColor(1.f, 0.55f, 0.15f),  // orange
-		FLinearColor(0.72f, 0.45f, 1.f),  // purple
-		FLinearColor(0.35f, 1.f, 0.6f),   // green
-		FLinearColor(1.f, 0.4f, 0.72f),   // pink
-		FLinearColor(0.35f, 0.85f, 1.f),  // cyan
-	};
-	uint32 H = 0;
-	for (TCHAR C : Sender.ToLower()) { H = H * 31 + C; }
-	return Palette[H % UE_ARRAY_COUNT(Palette)];
-}
-
 FSlateFontInfo UIntroChatWidget::SenderFont(int32 Size) const
 {
 	return HeavyFont ? FSlateFontInfo(HeavyFont.Get(), Size) : FCoreStyle::GetDefaultFontStyle("Bold", Size);
@@ -155,7 +143,7 @@ FSlateFontInfo UIntroChatWidget::BodyFont(int32 Size) const
 	return HeavyFont ? FSlateFontInfo(HeavyFont.Get(), Size) : FCoreStyle::GetDefaultFontStyle("Regular", Size);
 }
 
-UWidget* UIntroChatWidget::MakeBubble(const FString& Sender, const FString& Body, bool bCreepy, UTextBlock*& OutBody)
+UWidget* UIntroChatWidget::MakeBubble(const FString& Sender, const FString& Body, bool bCreepy, UTexture2D* Photo, UTextBlock*& OutBody)
 {
 	USizeBox* Box = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 	Box->SetMaxDesiredWidth(IntroChat::BubbleMaxWidth);
@@ -176,15 +164,28 @@ UWidget* UIntroChatWidget::MakeBubble(const FString& Sender, const FString& Body
 	UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	NameText->SetText(FText::FromString(Sender.ToUpper()));
 	NameText->SetFont(SenderFont(16));
-	NameText->SetColorAndOpacity(FSlateColor(bCreepy ? FLinearColor(1.f, 0.2f, 0.2f) : SenderColor(Sender)));
+	NameText->SetColorAndOpacity(FSlateColor(bCreepy ? FLinearColor(1.f, 0.2f, 0.2f) : NameColor));
 	V->AddChildToVerticalBox(NameText)->SetPadding(FMargin(0.f, 0.f, 0.f, 3.f));
+
+	if (Photo)
+	{
+		const float Aspect = float(Photo->GetSizeY()) / float(FMath::Max(1, Photo->GetSizeX()));
+		check(Aspect > 0.f);
+		UImage* Img = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+		Img->SetBrushFromTexture(Photo);
+		Img->SetDesiredSizeOverride(FVector2D(IntroChat::PhotoWidth, IntroChat::PhotoWidth * Aspect));
+		V->AddChildToVerticalBox(Img)->SetPadding(FMargin(0.f, 2.f, 0.f, Body.IsEmpty() ? 0.f : 6.f));
+	}
 
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Text->SetText(FText::FromString(Body));
 	Text->SetFont(BodyFont(28));
 	Text->SetColorAndOpacity(FSlateColor(bCreepy ? FLinearColor(1.f, 0.85f, 0.85f) : FLinearColor::White));
 	Text->SetAutoWrapText(true);
-	V->AddChildToVerticalBox(Text);
+	if (!Photo || !Body.IsEmpty())
+	{
+		V->AddChildToVerticalBox(Text);
+	}
 
 	B->SetContent(V);
 	Box->SetContent(B);
@@ -201,7 +202,7 @@ UWidget* UIntroChatWidget::MakeSystemLine(const FString& Body)
 	return T;
 }
 
-void UIntroChatWidget::PushWidget(UWidget* W, bool bCreepy, bool bSystem)
+void UIntroChatWidget::PushWidget(UWidget* W, bool bCreepy, bool bSystem, int32 Weight)
 {
 	UVerticalBoxSlot* S = Stack->AddChildToVerticalBox(W);
 	S->SetPadding(FMargin(0.f, 0.f, 0.f, 12.f));
@@ -214,6 +215,7 @@ void UIntroChatWidget::PushWidget(UWidget* W, bool bCreepy, bool bSystem)
 	Bub.W = W;
 	Bub.bCreepy = bCreepy;
 	Bub.bSystem = bSystem;
+	Bub.Weight = Weight;
 	Bubbles.Add(Bub);
 
 	// dim old ones, kick out the oldest
@@ -221,7 +223,7 @@ void UIntroChatWidget::PushWidget(UWidget* W, bool bCreepy, bool bSystem)
 	for (int32 i = Bubbles.Num() - 1; i >= 0; --i)
 	{
 		if (Bubbles[i].LeaveAge >= 0.f) { continue; }
-		++Live;
+		Live += Bubbles[i].Weight;
 		if (Live > IntroChat::MaxBubbles) { Bubbles[i].LeaveAge = 0.f; }
 	}
 }
@@ -230,7 +232,7 @@ void UIntroChatWidget::ShowTyping(const FString& Sender)
 {
 	HideTyping();
 	UTextBlock* Dots = nullptr;
-	TypingBubble = MakeBubble(Sender, TEXT("•"), false, Dots);
+	TypingBubble = MakeBubble(Sender, TEXT("•"), false, nullptr, Dots);
 	TypingDots = Dots;
 	// wrap would lock the bubble to the 1-dot width and stack dots vertically
 	TypingDots->SetAutoWrapText(false);
@@ -265,7 +267,7 @@ void UIntroChatWidget::ShowMessage(const FIntroChatMessage& M)
 	else
 	{
 		UTextBlock* Unused = nullptr;
-		PushWidget(MakeBubble(M.Sender, M.Body, M.bCreepy, Unused), M.bCreepy, false);
+		PushWidget(MakeBubble(M.Sender, M.Body, M.bCreepy, M.Photo, Unused), M.bCreepy, false, M.Photo ? IntroChat::PhotoWeight : 1);
 	}
 
 	if (PingSound && !bSystem)
@@ -434,8 +436,12 @@ AIntroChatGameMode::AIntroChatGameMode()
 	TypingSound = Typing.Object;
 	static ConstructorHelpers::FObjectFinder<UFont> Vt323(TEXT("/Game/UI/Fonts/VT323-Regular_Font.VT323-Regular_Font"));
 	ChatFont = Vt323.Object;
+	static ConstructorHelpers::FObjectFinder<UTexture2D> MateoPic(TEXT("/Game/UI/Images/mateo-text.mateo-text"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> AvaPic(TEXT("/Game/UI/Images/ava-text.ava-text"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> BarPic(TEXT("/Game/UI/Images/bar-text.bar-text"));
+	check(MateoPic.Object && AvaPic.Object && BarPic.Object);
 
-	auto Add = [this](const TCHAR* Sender, const TCHAR* Body, float Typing, float Hold, bool bCreepy = false)
+	auto Add = [this](const TCHAR* Sender, const TCHAR* Body, float Typing, float Hold, bool bCreepy = false, UTexture2D* Photo = nullptr)
 	{
 		FIntroChatMessage M;
 		M.Sender = Sender;
@@ -443,19 +449,23 @@ AIntroChatGameMode::AIntroChatGameMode()
 		M.TypingTime = Typing;
 		M.HoldTime = Hold;
 		M.bCreepy = bCreepy;
+		M.Photo = Photo;
 		Messages.Add(M);
 	};
 
 	Add(TEXT("Cass"),  TEXT("ok what is everyone wearing tonight"), 0.9f, 1.2f);
-	Add(TEXT("Mateo"),   TEXT("sexy zombie"), 0.6f, 1.1f);
+	Add(TEXT("Mateo"),   TEXT("sexy zombie"), 0.6f, 0.6f);
+	Add(TEXT("Mateo"),   TEXT(""), 0.8f, 1.6f, false, MateoPic.Object);
 	Add(TEXT("Cass"), TEXT("sure"), 0.4f, 0.6f);
-	Add(TEXT("Ava"),  TEXT("i'm going as lara croft"), 0.9f, 1.2f);
+	Add(TEXT("Ava"),  TEXT("i'm going as lara croft"), 0.9f, 0.6f);
+	Add(TEXT("Ava"),  TEXT(""), 0.8f, 1.6f, false, AvaPic.Object);
 	Add(TEXT("Cass"), TEXT("that's literally just your outfit"), 0.7f, 0.9f);
 	Add(TEXT("Ava"),  TEXT("exactly. just lesbianism"), 0.8f, 1.3f);
 	Add(TEXT("Cass"), TEXT("@michelle you better be in costume"), 0.8f, 1.4f);
 	Add(TEXT("Mateo"),   TEXT("bar is called ultra bar, neon green and pink sign"), 1.0f, 1.4f);
 	Add(TEXT("Ava"),  TEXT("we're heading in"), 0.6f, 1.6f);
-	Add(TEXT("Mateo"),   TEXT("it's sooo quiet in here lol"), 1.2f, 1.2f);
+	Add(TEXT("Mateo"),   TEXT("it's sooo quiet in here lol"), 1.2f, 0.6f);
+	Add(TEXT("Mateo"),   TEXT(""), 0.8f, 1.6f, false, BarPic.Object);
 	Add(TEXT("Ade"), TEXT("wait where is everyone"), 0.7f, 0.8f);
 	Add(TEXT("Cass"), TEXT("mateo??"), 0.4f, 1.6f);
 	Add(TEXT("Ade"),   TEXT("michelle hurry"), 1.4f, 1.2f);
@@ -498,6 +508,7 @@ void AIntroChatGameMode::Tick(float DeltaSeconds)
 		Chat->Background = Background;
 		Chat->EndHoldTime = EndHoldTime;
 		Chat->FadeOutTime = FadeOutTime;
+		Chat->NameColor = NameColor;
 		Chat->AddToViewport(100);
 
 		PC->SetShowMouseCursor(false);

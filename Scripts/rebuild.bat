@@ -5,7 +5,7 @@ cd /d "%~dp0.."
 tasklist /FI "IMAGENAME eq UnrealEditor.exe" | find /I "UnrealEditor.exe" >nul && (timeout /t 2 >nul & goto wait)
 call "C:\Program Files\Epic Games\UE_5.4\Engine\Build\BatchFiles\Build.bat" DanceDanceDieEditor Win64 Development -Project="%cd%\DanceDanceDie.uproject" -WaitMutex > Saved\rebuild.log 2>&1
 if errorlevel 1 (echo BUILD FAILED >> Saved\rebuild.log & start notepad Saved\rebuild.log & exit /b 1)
-git add Source Config Content/UI/WBP_MainMenu.uasset Scripts/rebuild.bat >> Saved\rebuild.log 2>&1
-git commit -m "Add MoviePlayer loading screen subsystem; drop fake menu delay" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01C13d7uRAVndZYmy8oWwGuo" >> Saved\rebuild.log 2>&1
+git add Source Config Scripts Content/UI >> Saved\rebuild.log 2>&1
+if exist Saved\commit_msg.txt (git commit -F Saved\commit_msg.txt >> Saved\rebuild.log 2>&1 & del Saved\commit_msg.txt)
 echo BUILD OK >> Saved\rebuild.log
 start "" "%cd%\DanceDanceDie.uproject"
