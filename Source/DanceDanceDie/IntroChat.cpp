@@ -32,8 +32,8 @@ namespace IntroChat
 	constexpr int32 BrightCount = 4; // newest N stay full opacity, older ones dim
 	constexpr float DimOpacity = 0.4f;
 	constexpr float BubbleMaxWidth = 520.f;
-	constexpr float PhotoWidth = 240.f;
-	constexpr int32 PhotoWeight = 3; // a photo counts as 3 text bubbles toward MaxBubbles
+	constexpr float PhotoWidth = 320.f;
+	constexpr int32 PhotoWeight = 4; // a photo counts as 4 text bubbles toward MaxBubbles
 }
 
 // ---------------------------------------------------------------- widget
@@ -169,12 +169,17 @@ UWidget* UIntroChatWidget::MakeBubble(const FString& Sender, const FString& Body
 
 	if (Photo)
 	{
-		const float Aspect = float(Photo->GetSizeY()) / float(FMath::Max(1, Photo->GetSizeX()));
-		check(Aspect > 0.f);
+		const float W = Photo->GetSurfaceWidth();
+		const float H = Photo->GetSurfaceHeight();
+		checkf(W > 0.f && H > 0.f, TEXT("IntroChat photo %s has no size"), *Photo->GetName());
 		UImage* Img = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 		Img->SetBrushFromTexture(Photo);
-		Img->SetDesiredSizeOverride(FVector2D(IntroChat::PhotoWidth, IntroChat::PhotoWidth * Aspect));
-		V->AddChildToVerticalBox(Img)->SetPadding(FMargin(0.f, 2.f, 0.f, Body.IsEmpty() ? 0.f : 6.f));
+		// fixed box so the photo is always PhotoWidth wide regardless of texture res
+		USizeBox* PhotoBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		PhotoBox->SetWidthOverride(IntroChat::PhotoWidth);
+		PhotoBox->SetHeightOverride(IntroChat::PhotoWidth * H / W);
+		PhotoBox->SetContent(Img);
+		V->AddChildToVerticalBox(PhotoBox)->SetPadding(FMargin(0.f, 2.f, 0.f, Body.IsEmpty() ? 0.f : 6.f));
 	}
 
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
