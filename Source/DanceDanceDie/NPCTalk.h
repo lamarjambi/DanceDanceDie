@@ -60,13 +60,17 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Talk", meta = (ClampMin = 0))
 	float Radius = 350.f;
 
-	// cm above the NPC's feet for the E icon
+	// the E icon sits on this bone (where the mesh is actually drawn; mixamo walks drift from the actor origin)
 	UPROPERTY(EditAnywhere, Category = "Talk")
-	float PromptHeight = 210.f;
+	FName HeadBone = TEXT("mixamorig:Head");
+
+	// cm above the head bone
+	UPROPERTY(EditAnywhere, Category = "Talk")
+	float PromptGap = 40.f;
 
 	// on-screen px
 	UPROPERTY(EditAnywhere, Category = "Talk", meta = (ClampMin = 8))
-	float PromptSize = 64.f;
+	float PromptSize = 80.f;
 
 	// subtitle stays this long + PerCharTime per character
 	UPROPERTY(EditAnywhere, Category = "Talk", meta = (ClampMin = 0))
@@ -90,6 +94,7 @@ protected:
 
 private:
 	bool IsClosestInRange(const FVector& PlayerLoc, float MyDist) const;
+	FVector HeadLocation() const;
 	void Say();
 
 	UPROPERTY() TObjectPtr<UNPCPromptWidget> Prompt;

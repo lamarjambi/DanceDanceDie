@@ -5,6 +5,7 @@
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/TextBlock.h"
 #include "Engine/Texture2D.h"
 #include "EngineUtils.h"
@@ -104,6 +105,14 @@ void ANPCTalker::BeginPlay()
 	if (!PromptIcon) { UE_LOG(LogNPCTalk, Error, TEXT("%s: PromptIcon not set"), *GetName()); }
 	if (!SubtitleClass) { UE_LOG(LogNPCTalk, Error, TEXT("%s: SubtitleClass not set"), *GetName()); }
 	if (Lines.IsEmpty()) { UE_LOG(LogNPCTalk, Error, TEXT("%s: no Lines"), *GetName()); }
+	if (NPC)
+	{
+		const USkeletalMeshComponent* Mesh = NPC->FindComponentByClass<USkeletalMeshComponent>();
+		if (!Mesh || Mesh->GetBoneIndex(HeadBone) == INDEX_NONE)
+		{
+			UE_LOG(LogNPCTalk, Error, TEXT("%s: NPC has no bone '%s'"), *GetName(), *HeadBone.ToString());
+		}
+	}
 
 	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
 	check(PC);
@@ -118,13 +127,19 @@ void ANPCTalker::EndPlay(const EEndPlayReason::Type Reason)
 	Super::EndPlay(Reason);
 }
 
+FVector ANPCTalker::HeadLocation() const
+{
+	const USkeletalMeshComponent* Mesh = NPC->FindComponentByClass<USkeletalMeshComponent>();
+	return (Mesh && Mesh->GetBoneIndex(HeadBone) != INDEX_NONE) ? Mesh->GetBoneLocation(HeadBone) : NPC->GetActorLocation();
+}
+
 bool ANPCTalker::IsClosestInRange(const FVector& PlayerLoc, float MyDist) const
 {
 	for (TActorIterator<ANPCTalker> It(GetWorld()); It; ++It)
 	{
 		const ANPCTalker* O = *It;
 		if (O == this || !O->NPC) { continue; }
-		const float D = FVector::Dist(PlayerLoc, O->NPC->GetActorLocation());
+		const float D = FVector::Dist2D(PlayerLoc, O->HeadLocation());
 		if (D <= O->Radius && D < MyDist) { return false; }
 	}
 	return true;
@@ -140,11 +155,12 @@ void ANPCTalker::Tick(float Dt)
 	if (!P) { Prompt->Step(Dt, false, FVector2D::ZeroVector, false); return; }
 
 	const FVector PlayerLoc = P->GetActorLocation();
-	const float Dist = FVector::Dist(PlayerLoc, NPC->GetActorLocation());
+	const FVector Head = HeadLocation();
+	const float Dist = FVector::Dist2D(PlayerLoc, Head);
 	const bool bActive = Dist <= Radius && IsClosestInRange(PlayerLoc, Dist);
 
 	FVector2D Screen;
-	const bool bOnScreen = PC->ProjectWorldLocationToScreen(NPC->GetActorLocation() + FVector(0, 0, PromptHeight), Screen, true);
+	const bool bOnScreen = PC->ProjectWorldLocationToScreen(Head + FVector(0, 0, PromptGap), Screen, true);
 	Prompt->Step(Dt, bActive, Screen, bOnScreen);
 
 	if (bActive && PC->WasInputKeyJustPressed(EKeys::E))
