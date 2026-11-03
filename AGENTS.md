@@ -15,6 +15,8 @@
   convert viewport UV → buffer UV: `(vpUV*View.ViewSizeAndInvSize.xy+View.ViewRectMin.xy)*View.BufferSizeAndInvSize.zw`.
   Otherwise screen % < 100 renders the image into a corner.
 - Keep rendered rows (screen height × screen %) ≥ 180.
+- PixelUV2 now returns `ViewportUVToSceneTextureUV(vp, 14)` (Scripts/fix_pp_viewportuv.py). The old View.* math zoomed the
+  image 1/0.6 from the top-left in PIE at 60%, so world and UI (e.g. NPC E prompt) didn't line up. Don't go back to View.* math.
 
 ## Scripts
 - Editor Python lives in `Scripts/`. Run from the editor's Python box:
@@ -28,3 +30,9 @@
 - Chat photos live in /Game/UI/Images; run `Scripts/setup_chat_photos.py` after importing (160px, nearest, no mips, UI group).
 - Names use one `NameColor` (no per-sender rainbow); creepy msgs stay red.
 - C++ header changes: run `Scripts/rebuild.bat` (waits for editor close, builds, commits with Saved/commit_msg.txt, reopens).
+
+## NPC talk (Source/DanceDanceDie/NPCTalk.*)
+- One `NPC_<Name>_Talk` (ANPCTalker) per city NPC, placed/updated by `Scripts/setup_npc_talk.py` (edit LINES there, re-run).
+- E icon (`/Game/UI/Images/keyboard_e`) is screen-space, anchored to bone `HeadTop_End`. Mixamo bones import WITHOUT the
+  `mixamorig:` prefix (Head, Hips, HeadTop_End). Mixamo walks aren't in-place, so the body drifts from the actor origin: use bones, not actor location.
+- Lines go into WBP_Subtitle (first TextBlock). While an NPC line is up, other WBP_Subtitle instances (trigger text) are collapsed, then restored.
