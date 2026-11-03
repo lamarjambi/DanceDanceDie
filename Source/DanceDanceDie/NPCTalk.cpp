@@ -1,5 +1,6 @@
 #include "NPCTalk.h"
 
+#include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
@@ -33,6 +34,7 @@ namespace
 
 TWeakObjectPtr<UUserWidget> ANPCTalker::ActiveSubtitle;
 FTimerHandle ANPCTalker::SubtitleTimer;
+TArray<TWeakObjectPtr<UUserWidget>> ANPCTalker::HiddenSubtitles;
 
 // ---------------------------------------------------------------- prompt widget
 
@@ -145,9 +147,34 @@ bool ANPCTalker::IsClosestInRange(const FVector& PlayerLoc, float MyDist) const
 	return true;
 }
 
+void ANPCTalker::SuppressOtherSubtitles()
+{
+	UUserWidget* Mine = ActiveSubtitle.Get();
+	if (!Mine)
+	{
+		// NPC line gone: bring back any trigger text that's still alive
+		for (const TWeakObjectPtr<UUserWidget>& W : HiddenSubtitles)
+		{
+			if (W.IsValid()) { W->SetVisibility(ESlateVisibility::HitTestInvisible); }
+		}
+		HiddenSubtitles.Reset();
+		return;
+	}
+
+	TArray<UUserWidget*> Found;
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(this, Found, SubtitleClass, false);
+	for (UUserWidget* W : Found)
+	{
+		if (W == Mine || W->GetVisibility() == ESlateVisibility::Collapsed) { continue; }
+		W->SetVisibility(ESlateVisibility::Collapsed);
+		HiddenSubtitles.AddUnique(W);
+	}
+}
+
 void ANPCTalker::Tick(float Dt)
 {
 	Super::Tick(Dt);
+	if (SubtitleClass) { SuppressOtherSubtitles(); }
 	if (!Prompt || !NPC) { return; }
 
 	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
@@ -198,6 +225,7 @@ void ANPCTalker::Say()
 	Text->SetText(FText::FromString(Line));
 	Sub->AddToViewport(60);
 	ActiveSubtitle = Sub;
+	SuppressOtherSubtitles();
 
 	TWeakObjectPtr<UUserWidget> Weak = Sub;
 	GetWorldTimerManager().SetTimer(SubtitleTimer, [Weak]()

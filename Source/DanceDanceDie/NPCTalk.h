@@ -3,6 +3,7 @@
 // shows the E key icon flying in above the NPC's head when the player is close,
 // and on E shows WBP_Subtitle with a random line (never the same one twice in a row).
 // only the closest in-range NPC shows the prompt, so one E press = one NPC.
+// NPC lines win over trigger text: other WBP_Subtitle instances are hidden while an NPC line is up, then restored.
 
 #pragma once
 
@@ -62,11 +63,11 @@ public:
 
 	// the E icon sits on this bone (where the mesh is actually drawn; mixamo walks drift from the actor origin)
 	UPROPERTY(EditAnywhere, Category = "Talk")
-	FName HeadBone = TEXT("mixamorig:Head");
+	FName HeadBone = TEXT("HeadTop_End"); // UE strips the "mixamorig:" prefix on import
 
 	// cm above the head bone
 	UPROPERTY(EditAnywhere, Category = "Talk")
-	float PromptGap = 40.f;
+	float PromptGap = 25.f;
 
 	// on-screen px
 	UPROPERTY(EditAnywhere, Category = "Talk", meta = (ClampMin = 8))
@@ -96,6 +97,7 @@ private:
 	bool IsClosestInRange(const FVector& PlayerLoc, float MyDist) const;
 	FVector HeadLocation() const;
 	void Say();
+	void SuppressOtherSubtitles();
 
 	UPROPERTY() TObjectPtr<UNPCPromptWidget> Prompt;
 	int32 LastLine = INDEX_NONE;
@@ -103,4 +105,6 @@ private:
 	// one subtitle on screen at a time, shared by all talkers
 	static TWeakObjectPtr<UUserWidget> ActiveSubtitle;
 	static FTimerHandle SubtitleTimer;
+	// trigger-text subtitles we hid while an NPC is talking
+	static TArray<TWeakObjectPtr<UUserWidget>> HiddenSubtitles;
 };
