@@ -21,3 +21,10 @@
   `exec(open(unreal.Paths.project_dir()+'Scripts/<name>.py').read())`
 - Rendered rows should be ~2x the effect's 180 rows or more. Fewer (e.g. 25% → ~233 rows) = uneven, choppy blocks,
   worst in the city (thin windows/signs/reflections). Club looks fine at any %.
+
+## Intro chat (Source/DanceDanceDie/IntroChat.*)
+- Messages are C++ constructor defaults; BP_IntroChatGameMode inherits them. Dump current BP values: `Scripts/dump_introchat.py` → Saved/introchat_dump.txt.
+- Photo message = `Photo` texture + empty Body. Shown in a fixed 320px-wide box (UImage desired-size override is ignored). Photos weigh 4 toward MaxBubbles.
+- Chat photos live in /Game/UI/Images; run `Scripts/setup_chat_photos.py` after importing (160px, nearest, no mips, UI group).
+- Names use one `NameColor` (no per-sender rainbow); creepy msgs stay red.
+- C++ header changes: run `Scripts/rebuild.bat` (waits for editor close, builds, commits with Saved/commit_msg.txt, reopens).

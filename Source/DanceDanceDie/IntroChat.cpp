@@ -459,10 +459,10 @@ AIntroChatGameMode::AIntroChatGameMode()
 	};
 
 	Add(TEXT("Cass"),  TEXT("ok what is everyone wearing tonight"), 0.9f, 1.2f);
-	Add(TEXT("Mateo"),   TEXT("sexy zombie"), 0.6f, 0.6f);
+	Add(TEXT("Mateo"),   TEXT("annabeth chase"), 0.6f, 0.6f);
 	Add(TEXT("Mateo"),   TEXT(""), 0.8f, 1.6f, false, MateoPic.Object);
 	Add(TEXT("Cass"), TEXT("sure"), 0.4f, 0.6f);
-	Add(TEXT("Ava"),  TEXT("i'm going as lara croft"), 0.9f, 0.6f);
+	Add(TEXT("Ava"),  TEXT("i'm going as joi from blade runner"), 0.9f, 0.6f);
 	Add(TEXT("Ava"),  TEXT(""), 0.8f, 1.6f, false, AvaPic.Object);
 	Add(TEXT("Cass"), TEXT("that's literally just your outfit"), 0.7f, 0.9f);
 	Add(TEXT("Ava"),  TEXT("exactly. just lesbianism"), 0.8f, 1.3f);
