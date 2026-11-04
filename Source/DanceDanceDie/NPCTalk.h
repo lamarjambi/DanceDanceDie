@@ -12,30 +12,25 @@
 #include "GameFramework/Actor.h"
 #include "NPCTalk.generated.h"
 
-class UCanvasPanelSlot;
+class UWidgetComponent;
 class UImage;
 class UTexture2D;
 
-// screen-space "E" icon. ANPCTalker drives it every tick.
+// the "E" key image. lives in a world-space UWidgetComponent so it goes through the same
+// post process as the NPC (PS1 pixelation) and can never drift off them.
 UCLASS()
-class DANCEDANCEDIE_API UNPCPromptWidget : public UUserWidget
+class DANCEDANCEDIE_API UNPCIconWidget : public UUserWidget
 {
 	GENERATED_BODY()
 
 public:
-	void SetIcon(UTexture2D* Tex, float Size);
-	// ScreenPos in viewport pixels. bWant = should be visible.
-	void Step(float Dt, bool bWant, const FVector2D& ScreenPos, bool bOnScreen);
+	void SetIcon(UTexture2D* Tex);
 
 protected:
 	virtual void NativeOnInitialized() override;
 
 private:
 	UPROPERTY() TObjectPtr<UImage> Icon;
-	UPROPERTY() TObjectPtr<UCanvasPanelSlot> IconSlot;
-	float Alpha = 0.f; // 0 hidden .. 1 fully in
-	float IconSize = 64.f;
-	float Time = 0.f;
 };
 
 UCLASS()
@@ -69,9 +64,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Talk")
 	float PromptGap = 25.f;
 
-	// on-screen px
-	UPROPERTY(EditAnywhere, Category = "Talk", meta = (ClampMin = 8))
-	float PromptSize = 80.f;
+	// cm, width of the E icon in the world
+	UPROPERTY(EditAnywhere, Category = "Talk", meta = (ClampMin = 1))
+	float PromptSize = 30.f;
 
 	// subtitle stays this long + PerCharTime per character
 	UPROPERTY(EditAnywhere, Category = "Talk", meta = (ClampMin = 0))
@@ -99,7 +94,11 @@ private:
 	void Say();
 	void SuppressOtherSubtitles();
 
-	UPROPERTY() TObjectPtr<UNPCPromptWidget> Prompt;
+	UPROPERTY(VisibleAnywhere, Category = "Talk")
+	TObjectPtr<UWidgetComponent> Prompt;
+
+	float PromptAlpha = 0.f; // 0 hidden .. 1 fully flown in
+	float PromptTime = 0.f;
 	int32 LastLine = INDEX_NONE;
 
 	// one subtitle on screen at a time, shared by all talkers

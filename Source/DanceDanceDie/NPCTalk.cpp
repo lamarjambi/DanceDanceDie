@@ -1,13 +1,11 @@
 #include "NPCTalk.h"
 
 #include "Blueprint/WidgetBlueprintLibrary.h"
-#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Blueprint/WidgetTree.h"
-#include "Components/CanvasPanel.h"
-#include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/TextBlock.h"
+#include "Components/WidgetComponent.h"
 #include "Engine/Texture2D.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
@@ -21,8 +19,9 @@ DEFINE_LOG_CATEGORY_STATIC(LogNPCTalk, Log, All);
 namespace
 {
 	constexpr float FlyTime = 0.28f;  // secs to fly in / out
-	constexpr float FlyDist = 70.f;   // px it rises from
-	constexpr float BobAmp = 4.f;     // px idle bob
+	constexpr float FlyDist = 40.f;   // cm it rises from
+	constexpr float BobAmp = 3.f;     // cm idle bob
+	constexpr float IconPx = 128.f;   // widget draw size
 	constexpr float BobSpeed = 3.f;
 
 	float EaseOutBack(float T)
@@ -36,54 +35,20 @@ TWeakObjectPtr<UUserWidget> ANPCTalker::ActiveSubtitle;
 FTimerHandle ANPCTalker::SubtitleTimer;
 TArray<TWeakObjectPtr<UUserWidget>> ANPCTalker::HiddenSubtitles;
 
-// ---------------------------------------------------------------- prompt widget
+// ---------------------------------------------------------------- icon widget
 
-void UNPCPromptWidget::NativeOnInitialized()
+void UNPCIconWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 	check(WidgetTree);
-
-	UCanvasPanel* Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("Root"));
-	WidgetTree->RootWidget = Root;
-
 	Icon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Icon"));
-	IconSlot = Root->AddChildToCanvas(Icon);
-	IconSlot->SetAlignment(FVector2D(0.5f, 1.f)); // bottom-center sits on the head point
-	IconSlot->SetAutoSize(false);
-	Icon->SetRenderOpacity(0.f);
-	Icon->SetVisibility(ESlateVisibility::HitTestInvisible);
-	SetVisibility(ESlateVisibility::HitTestInvisible);
+	WidgetTree->RootWidget = Icon;
 }
 
-void UNPCPromptWidget::SetIcon(UTexture2D* Tex, float Size)
+void UNPCIconWidget::SetIcon(UTexture2D* Tex)
 {
 	check(Icon);
-	IconSize = Size;
 	Icon->SetBrushFromTexture(Tex);
-	IconSlot->SetSize(FVector2D(Size, Size));
-}
-
-void UNPCPromptWidget::Step(float Dt, bool bWant, const FVector2D& ScreenPos, bool bOnScreen)
-{
-	Time += Dt;
-	const float Target = (bWant && bOnScreen) ? 1.f : 0.f;
-	Alpha = FMath::FInterpConstantTo(Alpha, Target, Dt, 1.f / FlyTime);
-
-	if (Alpha <= 0.f)
-	{
-		Icon->SetRenderOpacity(0.f);
-		return;
-	}
-
-	const float E = EaseOutBack(Alpha);
-	const float Scale = UWidgetLayoutLibrary::GetViewportScale(this);
-	const FVector2D P = ScreenPos / FMath::Max(Scale, KINDA_SMALL_NUMBER);
-	const float Bob = FMath::Sin(Time * BobSpeed) * BobAmp * Alpha;
-
-	IconSlot->SetPosition(FVector2D(P.X, P.Y + (1.f - E) * FlyDist + Bob));
-	Icon->SetRenderOpacity(FMath::Clamp(Alpha * 1.5f, 0.f, 1.f));
-	Icon->SetRenderTransformPivot(FVector2D(0.5f, 1.f));
-	Icon->SetRenderScale(FVector2D(FMath::Max(E, 0.05f)));
 }
 
 // ---------------------------------------------------------------- talker
@@ -92,6 +57,16 @@ ANPCTalker::ANPCTalker()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+
+	Prompt = CreateDefaultSubobject<UWidgetComponent>(TEXT("Prompt"));
+	Prompt->SetupAttachment(RootComponent);
+	Prompt->SetWidgetSpace(EWidgetSpace::World);
+	Prompt->SetWidgetClass(UNPCIconWidget::StaticClass());
+	Prompt->SetDrawSize(FVector2D(IconPx, IconPx));
+	Prompt->SetPivot(FVector2D(0.5f, 1.f)); // bottom-center sits on the head point
+	Prompt->SetTwoSided(true);
+	Prompt->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Prompt->SetHiddenInGame(true);
 
 	static ConstructorHelpers::FObjectFinder<UTexture2D> IconFinder(TEXT("/Game/UI/Images/keyboard_e"));
 	PromptIcon = IconFinder.Object;
@@ -116,16 +91,17 @@ void ANPCTalker::BeginPlay()
 		}
 	}
 
-	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
-	check(PC);
-	Prompt = CreateWidget<UNPCPromptWidget>(PC, UNPCPromptWidget::StaticClass());
-	Prompt->SetIcon(PromptIcon, PromptSize);
-	Prompt->AddToViewport(50);
+	Prompt->InitWidget();
+	UNPCIconWidget* W = Cast<UNPCIconWidget>(Prompt->GetUserWidgetObject());
+	check(W);
+	W->SetIcon(PromptIcon);
 }
 
 void ANPCTalker::EndPlay(const EEndPlayReason::Type Reason)
 {
-	if (Prompt) { Prompt->RemoveFromParent(); }
+	// statics outlive a PIE session
+	ActiveSubtitle.Reset();
+	HiddenSubtitles.Reset();
 	Super::EndPlay(Reason);
 }
 
@@ -149,7 +125,14 @@ bool ANPCTalker::IsClosestInRange(const FVector& PlayerLoc, float MyDist) const
 
 void ANPCTalker::SuppressOtherSubtitles()
 {
+	// RemoveFromParent doesn't kill the widget object, so the weak ptr stays valid until GC.
+	// Without this check a finished NPC line kept hiding all trigger text.
 	UUserWidget* Mine = ActiveSubtitle.Get();
+	if (Mine && !Mine->IsInViewport())
+	{
+		ActiveSubtitle.Reset();
+		Mine = nullptr;
+	}
 	if (!Mine)
 	{
 		// NPC line gone: bring back any trigger text that's still alive
@@ -175,20 +158,42 @@ void ANPCTalker::Tick(float Dt)
 {
 	Super::Tick(Dt);
 	if (SubtitleClass) { SuppressOtherSubtitles(); }
-	if (!Prompt || !NPC) { return; }
+	if (!NPC) { return; }
 
 	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
 	APawn* P = PC ? PC->GetPawn() : nullptr;
-	if (!P) { Prompt->Step(Dt, false, FVector2D::ZeroVector, false); return; }
 
-	const FVector PlayerLoc = P->GetActorLocation();
 	const FVector Head = HeadLocation();
-	const float Dist = FVector::Dist2D(PlayerLoc, Head);
-	const bool bActive = Dist <= Radius && IsClosestInRange(PlayerLoc, Dist);
+	bool bActive = false;
+	if (P)
+	{
+		const FVector PlayerLoc = P->GetActorLocation();
+		const float Dist = FVector::Dist2D(PlayerLoc, Head);
+		bActive = Dist <= Radius && IsClosestInRange(PlayerLoc, Dist);
+	}
 
-	FVector2D Screen;
-	const bool bOnScreen = PC->ProjectWorldLocationToScreen(Head + FVector(0, 0, PromptGap), Screen, true);
-	Prompt->Step(Dt, bActive, Screen, bOnScreen);
+	// fly in / out
+	PromptTime += Dt;
+	PromptAlpha = FMath::FInterpConstantTo(PromptAlpha, bActive ? 1.f : 0.f, Dt, 1.f / FlyTime);
+	Prompt->SetHiddenInGame(PromptAlpha <= 0.f);
+	if (PromptAlpha > 0.f)
+	{
+		const float E = EaseOutBack(PromptAlpha);
+		const float Bob = FMath::Sin(PromptTime * BobSpeed) * BobAmp * PromptAlpha;
+		const FVector Loc = Head + FVector(0, 0, PromptGap - (1.f - E) * FlyDist + Bob);
+
+		// face the camera
+		FVector CamLoc; FRotator CamRot;
+		PC->GetPlayerViewPoint(CamLoc, CamRot);
+		const FRotator Face = FRotationMatrix::MakeFromX(CamLoc - Loc).Rotator();
+
+		Prompt->SetWorldLocationAndRotation(Loc, Face);
+		Prompt->SetWorldScale3D(FVector(FMath::Max(E, 0.01f) * PromptSize / IconPx));
+		if (UUserWidget* W = Prompt->GetUserWidgetObject())
+		{
+			W->SetRenderOpacity(FMath::Clamp(PromptAlpha * 1.5f, 0.f, 1.f));
+		}
+	}
 
 	if (bActive && PC->WasInputKeyJustPressed(EKeys::E))
 	{
@@ -231,5 +236,6 @@ void ANPCTalker::Say()
 	GetWorldTimerManager().SetTimer(SubtitleTimer, [Weak]()
 	{
 		if (UUserWidget* W = Weak.Get()) { W->RemoveFromParent(); }
+		if (ActiveSubtitle == Weak) { ActiveSubtitle.Reset(); }
 	}, SubtitleTime + PerCharTime * Line.Len(), false);
 }
