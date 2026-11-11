@@ -7,6 +7,7 @@
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
+#include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/Spacer.h"
 #include "Components/TextBlock.h"
@@ -28,12 +29,22 @@ namespace IntroChat
 	constexpr float FadeInTime = 0.8f;
 	constexpr float PopTime = 0.38f;
 	constexpr float LeaveTime = 0.45f;
-	constexpr int32 MaxBubbles = 7;
 	constexpr int32 BrightCount = 4; // newest N stay full opacity, older ones dim
 	constexpr float DimOpacity = 0.4f;
 	constexpr float BubbleMaxWidth = 520.f;
 	constexpr float PhotoWidth = 320.f;
-	constexpr int32 PhotoWeight = 4; // a photo counts as 4 text bubbles toward MaxBubbles
+	constexpr int32 PhotoWeight = 4; // unused: nothing is evicted any more (history is scrollable)
+	constexpr float ScrollStep = 90.f;   // px per wheel tick
+	constexpr float ScrollSpeed = 900.f; // px/s while a key/stick is held
+	constexpr float FollowSlack = 40.f;  // within this many px of the bottom = keep following new msgs
+
+	// widgets are built in NativeOnInitialized and found by name (keeps the header / live coding untouched)
+	UScrollBox* GetScroll(const UUserWidget* W)
+	{
+		UScrollBox* S = W->WidgetTree->FindWidget<UScrollBox>(TEXT("Scroll"));
+		check(S);
+		return S;
+	}
 }
 
 // ---------------------------------------------------------------- widget
@@ -84,19 +95,26 @@ void UIntroChatWidget::NativeOnInitialized()
 		S->SetPosition(FVector2D(0.f, 0.f));
 	}
 
-	// bubble stack, newest at the bottom
+	// scrollable bubble stack, newest at the bottom. TopSpacer is resized every Step so a short
+	// history sits at the bottom of the scroll area (ScrollBox children can't Fill).
+	UScrollBox* Scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass(), TEXT("Scroll"));
+	Scroll->SetOrientation(Orient_Vertical);
+	Scroll->SetScrollBarVisibility(ESlateVisibility::Visible);
+	Scroll->SetScrollbarThickness(FVector2D(4.f, 4.f));
+	Scroll->SetAlwaysShowScrollbar(false);
 	Stack = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Stack"));
 	USpacer* Spacer = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass(), TEXT("TopSpacer"));
-	Stack->AddChildToVerticalBox(Spacer)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	Stack->AddChildToVerticalBox(Spacer);
+	Scroll->AddChild(Stack);
 	{
-		UCanvasPanelSlot* S = Root->AddChildToCanvas(Stack);
+		UCanvasPanelSlot* S = Root->AddChildToCanvas(Scroll);
 		S->SetAnchors(FAnchors(0.5f, 0.15f, 0.92f, 0.9f));
 		S->SetOffsets(FMargin(0.f));
 	}
 
 	// skip hint
 	UTextBlock* Hint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SkipHint"));
-	Hint->SetText(FText::FromString(TEXT("press space to skip")));
+	Hint->SetText(FText::FromString(TEXT("press/click anywhere to skip")));
 	Hint->SetFont(BodyFont(18));
 	Hint->SetColorAndOpacity(FSlateColor(FLinearColor(1.f, 1.f, 1.f, 0.25f)));
 	{
@@ -223,13 +241,11 @@ void UIntroChatWidget::PushWidget(UWidget* W, bool bCreepy, bool bSystem, int32 
 	Bub.Weight = Weight;
 	Bubbles.Add(Bub);
 
-	// dim old ones, kick out the oldest
-	int32 Live = 0;
-	for (int32 i = Bubbles.Num() - 1; i >= 0; --i)
+	// follow new messages unless the player scrolled up to reread
+	UScrollBox* Scroll = IntroChat::GetScroll(this);
+	if (Scroll->GetScrollOffset() >= Scroll->GetScrollOffsetOfEnd() - IntroChat::FollowSlack)
 	{
-		if (Bubbles[i].LeaveAge >= 0.f) { continue; }
-		Live += Bubbles[i].Weight;
-		if (Live > IntroChat::MaxBubbles) { Bubbles[i].LeaveAge = 0.f; }
+		Scroll->ScrollToEnd();
 	}
 }
 
@@ -299,6 +315,15 @@ void UIntroChatWidget::Step(float Dt)
 	TotalTime += Dt;
 	PhaseTime += Dt;
 
+	// pad the top so a short history hugs the bottom (sizes are from last frame's layout)
+	{
+		USpacer* Spacer = WidgetTree->FindWidget<USpacer>(TEXT("TopSpacer"));
+		check(Spacer);
+		const float ViewH = IntroChat::GetScroll(this)->GetCachedGeometry().GetLocalSize().Y;
+		const float ContentH = Stack->GetDesiredSize().Y - Spacer->GetSize().Y;
+		Spacer->SetSize(FVector2D(1.f, FMath::Max(0.f, ViewH - ContentH)));
+	}
+
 	// slow push-in on the background
 	const float Zoom = 1.f + 0.06f * FMath::Clamp(TotalTime / 30.f, 0.f, 1.f);
 	Backdrop->SetRenderScale(FVector2D(Zoom));
@@ -321,7 +346,9 @@ void UIntroChatWidget::Step(float Dt)
 
 		if (B.LeaveAge < 0.f)
 		{
-			const float Target = Rank < IntroChat::BrightCount ? 1.f : IntroChat::DimOpacity;
+			// once the chat is over everything goes full bright for rereading
+			const bool bReading = Phase == EPhase::EndHold;
+			const float Target = (bReading || Rank < IntroChat::BrightCount) ? 1.f : IntroChat::DimOpacity;
 			B.Dim = FMath::FInterpTo(B.Dim, Target, Dt, 5.f);
 			++Rank;
 		}
@@ -406,10 +433,14 @@ void UIntroChatWidget::Step(float Dt)
 		break;
 
 	case EPhase::EndHold:
+		// chat is over: stay here (scrollable) until the player presses space -> Skip() -> FadeOut.
+		// EndHoldTime = delay before the hint switches to "continue".
 		if (PhaseTime >= EndHoldTime)
 		{
-			Phase = EPhase::FadeOut;
-			PhaseTime = 0.f;
+			UTextBlock* Hint = WidgetTree->FindWidget<UTextBlock>(TEXT("SkipHint"));
+			check(Hint);
+			Hint->SetText(FText::FromString(TEXT("press/click anywhere to continue")));
+			Hint->SetColorAndOpacity(FSlateColor(FLinearColor(1.f, 1.f, 1.f, 0.6f)));
 		}
 		break;
 
@@ -529,6 +560,25 @@ void AIntroChatGameMode::Tick(float DeltaSeconds)
 	for (const FKey& K : SkipKeys)
 	{
 		if (PC->WasInputKeyJustPressed(K)) { Chat->Skip(); break; }
+	}
+
+	// scroll the chat history: mouse wheel, up/down / W/S / page keys, gamepad dpad / left stick
+	{
+		UScrollBox* Scroll = IntroChat::GetScroll(Chat);
+		float Delta = 0.f;
+		// wheel axis = ticks this frame (JustPressed would collapse fast spins into 1 tick)
+		Delta -= PC->GetInputAnalogKeyState(EKeys::MouseWheelAxis) * IntroChat::ScrollStep;
+		if (PC->WasInputKeyJustPressed(EKeys::PageUp))   { Delta -= Scroll->GetCachedGeometry().GetLocalSize().Y * 0.8f; }
+		if (PC->WasInputKeyJustPressed(EKeys::PageDown)) { Delta += Scroll->GetCachedGeometry().GetLocalSize().Y * 0.8f; }
+		float Axis = 0.f;
+		if (PC->IsInputKeyDown(EKeys::Up) || PC->IsInputKeyDown(EKeys::W) || PC->IsInputKeyDown(EKeys::Gamepad_DPad_Up))     { Axis -= 1.f; }
+		if (PC->IsInputKeyDown(EKeys::Down) || PC->IsInputKeyDown(EKeys::S) || PC->IsInputKeyDown(EKeys::Gamepad_DPad_Down)) { Axis += 1.f; }
+		Axis -= PC->GetInputAnalogKeyState(EKeys::Gamepad_LeftY); // stick up = positive
+		Delta += FMath::Clamp(Axis, -1.f, 1.f) * IntroChat::ScrollSpeed * DeltaSeconds;
+		if (Delta != 0.f)
+		{
+			Scroll->SetScrollOffset(FMath::Clamp(Scroll->GetScrollOffset() + Delta, 0.f, Scroll->GetScrollOffsetOfEnd()));
+		}
 	}
 
 	Chat->Step(DeltaSeconds);

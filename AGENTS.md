@@ -26,7 +26,13 @@
 
 ## Intro chat (Source/DanceDanceDie/IntroChat.*)
 - Messages are C++ constructor defaults; BP_IntroChatGameMode inherits them. Dump current BP values: `Scripts/dump_introchat.py` → Saved/introchat_dump.txt.
-- Photo message = `Photo` texture + empty Body. Shown in a fixed 320px-wide box (UImage desired-size override is ignored). Photos weigh 4 toward MaxBubbles.
+- Photo message = `Photo` texture + empty Body. Shown in a fixed 320px-wide box (UImage desired-size override is ignored).
+- History is a UScrollBox (`Scroll`) — nothing is evicted. New msgs auto-follow unless the player scrolled up (>40px from end).
+  `TopSpacer` is resized each Step so short history hugs the bottom. Scroll input is polled in the game mode Tick
+  (wheel, Up/Down, W/S, PgUp/PgDn, dpad, left stick) since input mode is GameOnly.
+- After the last msg the chat stays in EndHold (all bubbles full bright) until Space → Skip() → FadeOut → NextLevel.
+  `EndHoldTime` = delay before the hint changes to "press space to continue". Space mid-animation still skips.
+- Widgets are found by name via WidgetTree->FindWidget so cpp-only changes work with Live Coding (Ctrl+Alt+F11). `Weight`/`LeaveAge` are dead (header untouched).
 - Chat photos live in /Game/UI/Images; run `Scripts/setup_chat_photos.py` after importing (160px, nearest, no mips, UI group).
 - Names use one `NameColor` (no per-sender rainbow); creepy msgs stay red.
 - NEVER commit (user rule). Build with `Scripts/build_only.bat` (no git). Don't create Saved/commit_msg.txt.
