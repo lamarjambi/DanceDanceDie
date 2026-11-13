@@ -1,12 +1,13 @@
 import unreal
 # demo ending setup. places the Cliffhanger actor in the club (DemoMap), gives it one idle anim per dancer skeleton
-# (retargets Bobby's idle for skeletons that have none), and makes DemoEnd use DemoEndGameMode.
+# (retargets Bobby's idle for skeletons that have none), and makes DemoEnd use BP_DemoEndGameMode (created if missing).
 # safe to re-run: exec(open(unreal.Paths.project_dir()+'Scripts/setup_cliffhanger.py').read())
 # lines / timings are edited on the Cliffhanger actor's Details panel. the values below are only used when the actor is first created.
 LINES = ["Michelle!! You made it!", "You dance so well.", "Stay."]  # 1st, 2nd, 3rd E press. the last one starts the flicker
 IDLE_TIMEOUT = 10.0   # secs without an E press before the flicker starts anyway
 CLUB = '/Game/CyberClub/DemoMap/DemoMap'
 END = '/Game/UI/DemoEnd'
+END_GM = '/Game/UI/BP_DemoEndGameMode'  # blueprint child of DemoEndGameMode: end-screen text and timing are its class defaults
 NPC_DIR = '/Game/Characters/NPC'
 RTG_DIR = NPC_DIR + '/Dance/Retarget'
 IDLE_SOURCE = 'Bobby'  # retarget source for skeletons without an idle (needs RTG_Bobby_to_<Name>)
@@ -21,10 +22,20 @@ gcls = unreal.load_class(None, '/Script/DanceDanceDie.DemoEndGameMode')
 assert dcls and gcls, 'Cliffhanger classes missing: rebuild C++ first'
 
 assert ELS.load_map(END), 'missing ' + END
+if not EAL.does_asset_exist(END_GM):
+    fac = unreal.BlueprintFactory()
+    fac.set_editor_property('parent_class', gcls)
+    bp = unreal.AssetToolsHelpers.get_asset_tools().create_asset(END_GM.split('/')[-1], END_GM.rsplit('/', 1)[0], unreal.Blueprint, fac)
+    assert bp, 'could not create ' + END_GM
+    assert EAL.save_asset(END_GM)
+    unreal.log_warning('CLIFF made ' + END_GM)
+bpcls = unreal.load_class(None, '%s.%s_C' % (END_GM, END_GM.split('/')[-1]))
+assert bpcls, 'cannot load class of ' + END_GM
 ws = UES.get_editor_world().get_world_settings()
-if ws.get_editor_property('default_game_mode') != gcls:
-    ws.set_editor_property('default_game_mode', gcls)
+if ws.get_editor_property('default_game_mode') != bpcls:
+    ws.set_editor_property('default_game_mode', bpcls)
     assert unreal.EditorLevelLibrary.save_current_level()
+unreal.log_warning('CLIFF %s gm=%s' % (END, ws.get_editor_property('default_game_mode').get_name()))
 
 assert ELS.load_map(CLUB), 'missing ' + CLUB
 acts = EAS.get_all_level_actors()

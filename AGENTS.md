@@ -73,7 +73,8 @@
   every AudioComponent that was playing winds down (pitch + volume), the screen blacks out via manual camera fade with `FlickerTickSound` each time.
   In the LAST blackout each dancer plays the idle from `IdleAnims` that matches its skeleton and turns to the camera (mesh right vector = facing).
   No matching idle = on-screen error + frozen dance pose. Then lights back = stare for `StareHold` (optional `StareSound`), move input ignored, look still works.
-- Then hard cut (`OpenLevel`) to `/Game/UI/DemoEnd`, whose World Settings game mode is `DemoEndGameMode`: black + "it's not over" (VT323) -> MainMenu.
+- Then hard cut (`OpenLevel`) to `/Game/UI/DemoEnd`, whose World Settings game mode is `/Game/UI/BP_DemoEndGameMode` (child of C++ `DemoEndGameMode`): black + "it's not over" (VT323) -> MainMenu.
+  End-screen text, font size, colour, delay and hold are that Blueprint's Class Defaults (Demo End category), no rebuild.
   `DemoEnd` is in LoadingScreen `SkipMaps` (Config/DefaultGame.ini) so the cut has no loading screen.
 - Edit lines, timings and sounds on the `Cliffhanger` actor in DemoMap (Details panel, no rebuild). `Scripts/setup_cliffhanger.py` only seeds
   them when it first creates the actor; re-running it refreshes `IdleAnims` (one idle per dancer skeleton, found by "idle" in the asset name
