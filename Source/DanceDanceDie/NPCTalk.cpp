@@ -81,7 +81,7 @@ void ANPCTalker::BeginPlay()
 	if (!NPC) { UE_LOG(LogNPCTalk, Error, TEXT("%s: NPC not set"), *GetName()); }
 	if (!PromptIcon) { UE_LOG(LogNPCTalk, Error, TEXT("%s: PromptIcon not set"), *GetName()); }
 	if (!SubtitleClass) { UE_LOG(LogNPCTalk, Error, TEXT("%s: SubtitleClass not set"), *GetName()); }
-	if (Lines.IsEmpty()) { UE_LOG(LogNPCTalk, Error, TEXT("%s: no Lines"), *GetName()); }
+	if (Lines.IsEmpty() && !LineProvider.IsBound()) { UE_LOG(LogNPCTalk, Error, TEXT("%s: no Lines"), *GetName()); }
 	if (NPC)
 	{
 		const USkeletalMeshComponent* Mesh = NPC->FindComponentByClass<USkeletalMeshComponent>();
@@ -203,12 +203,22 @@ void ANPCTalker::Tick(float Dt)
 
 void ANPCTalker::Say()
 {
-	if (Lines.IsEmpty() || !SubtitleClass) { return; }
+	if (!SubtitleClass) { return; }
 
-	int32 I = FMath::RandRange(0, Lines.Num() - 1);
-	if (Lines.Num() > 1 && I == LastLine) { I = (I + 1) % Lines.Num(); }
-	LastLine = I;
-	const FString Line = SpeakerName.IsEmpty() ? Lines[I] : FString::Printf(TEXT("%s: %s"), *SpeakerName, *Lines[I]);
+	FString Picked;
+	if (LineProvider.IsBound())
+	{
+		Picked = LineProvider.Execute();
+	}
+	else
+	{
+		if (Lines.IsEmpty()) { return; }
+		int32 I = FMath::RandRange(0, Lines.Num() - 1);
+		if (Lines.Num() > 1 && I == LastLine) { I = (I + 1) % Lines.Num(); }
+		LastLine = I;
+		Picked = Lines[I];
+	}
+	const FString Line = SpeakerName.IsEmpty() ? Picked : FString::Printf(TEXT("%s: %s"), *SpeakerName, *Picked);
 
 	if (UUserWidget* Old = ActiveSubtitle.Get()) { Old->RemoveFromParent(); }
 	GetWorldTimerManager().ClearTimer(SubtitleTimer);

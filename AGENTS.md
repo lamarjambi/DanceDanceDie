@@ -64,3 +64,19 @@
   After any paste, re-set them: music = `SCP-x5x` (Sound Wave), cue = `MSS_SCP-x5x` (MetaSound). Better: never delete those nodes.
 - Verify playtests from `Saved/Logs/DanceDanceDie_2.log` (standalone): expect `cue!!` lines.
 - `Scripts/t3d/spline_backup.t3d` = BP_Spline Event Graph before hold notes.
+
+## Demo ending / cliffhanger (Source/DanceDanceDie/Cliffhanger.*)
+- All C++, no Blueprint wiring. `Cliffhanger` actor (ACliffhangerDirector) in DemoMap detects the win by watching the actors tagged
+  `PartyNPC` go from hidden to visible (BP_Spline does that). Keep that tag + "start hidden" or the ending never fires (it errors on screen).
+- Party: spawns one ANPCTalker per dancer at runtime; `ANPCTalker::LineProvider` (C++ delegate) feeds Lines[0..2] in order, whoever is asked.
+- Last line, or `IdleTimeout` (10 s) without an E press, starts the flicker (`FlickerTime`, `FlickerCount`): `FlickerStartSound` (suspension-sfx) plays,
+  every AudioComponent that was playing winds down (pitch + volume), the screen blacks out via manual camera fade with `FlickerTickSound` each time.
+  In the LAST blackout each dancer plays the idle from `IdleAnims` that matches its skeleton and turns to the camera (mesh right vector = facing).
+  No matching idle = on-screen error + frozen dance pose. Then lights back = stare for `StareHold` (optional `StareSound`), move input ignored, look still works.
+- Then hard cut (`OpenLevel`) to `/Game/UI/DemoEnd`, whose World Settings game mode is `DemoEndGameMode`: black + "it's not over" (VT323) -> MainMenu.
+  `DemoEnd` is in LoadingScreen `SkipMaps` (Config/DefaultGame.ini) so the cut has no loading screen.
+- Edit lines, timings and sounds on the `Cliffhanger` actor in DemoMap (Details panel, no rebuild). `Scripts/setup_cliffhanger.py` only seeds
+  them when it first creates the actor; re-running it refreshes `IdleAnims` (one idle per dancer skeleton, found by "idle" in the asset name
+  under /Game/Characters/NPC; skeletons without one get Bobby's idle retargeted via RTG_Bobby_to_<Name>) and DemoEnd's game mode.
+- Test without playing the song: PIE in DemoMap, console `ddd.FakeWin`. Log category `LogCliffhanger`.
+- `Scripts/run_build.py` = start build_only.bat from the editor Python box, then close the editor.

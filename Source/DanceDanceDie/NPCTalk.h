@@ -16,6 +16,9 @@ class UWidgetComponent;
 class UImage;
 class UTexture2D;
 
+// returns the line to say. when bound it replaces the random pick from Lines (used by the club cliffhanger).
+DECLARE_DELEGATE_RetVal(FString, FNPCLineProvider);
+
 // the "E" key image. lives in a world-space UWidgetComponent so it goes through the same
 // post process as the NPC (PS1 pixelation) and can never drift off them.
 UCLASS()
@@ -81,6 +84,9 @@ public:
 	// any widget with a TextBlock in it. the first TextBlock found gets the line.
 	UPROPERTY(EditAnywhere, Category = "Talk")
 	TSubclassOf<UUserWidget> SubtitleClass;
+
+	// c++ only. bind before BeginPlay (SpawnActorDeferred) and Lines can stay empty.
+	FNPCLineProvider LineProvider;
 
 	virtual void Tick(float Dt) override;
 
