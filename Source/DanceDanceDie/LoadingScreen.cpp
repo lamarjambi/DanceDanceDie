@@ -53,9 +53,7 @@ void ULoadingScreenSubsystem::OnPreLoadMap(const FString& MapName)
 {
 	if (IsRunningDedicatedServer() || !IsMoviePlayerEnabled()) { return; } // off in PIE, by design
 
-	// no loading screen at boot (straight to the main menu, like most games)
-	if (!bBootDone) { bBootDone = true; return; }
-
+	// boot included: the main menu streams the whole city, so it needs the warmup screen too
 	const ULoadingScreenSettings* S = GetDefault<ULoadingScreenSettings>();
 	for (const FString& Skip : S->SkipMaps)
 	{

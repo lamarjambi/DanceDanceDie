@@ -2,7 +2,7 @@
 // phase 1: MoviePlayer thread shows the widget while the map file loads (doesn't freeze).
 // phase 2: after the map loads, same widget stays on top (world running, input blocked) until
 //          shaders, PSOs, textures and auto-exposure have settled, so nothing pops in on reveal.
-// no screen at boot (first map = main menu).
+// also shown at boot (main menu streams the city -> shaders/textures need to warm up before reveal).
 // set the widget in Project Settings > Game > Loading Screen.
 // NOTE: MoviePlayer is off in PIE. test with Play > Standalone Game (or a packaged build).
 
@@ -78,7 +78,6 @@ private:
 	FTSTicker::FDelegateHandle TickHandle;
 
 	bool bActive = false;
-	bool bBootDone = false;
 	double StartTime = 0.0;
 	float Waited = 0.f;
 	float Settled = 0.f;

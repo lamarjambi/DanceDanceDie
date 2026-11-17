@@ -35,7 +35,7 @@
 - Widgets are found by name via WidgetTree->FindWidget so cpp-only changes work with Live Coding (Ctrl+Alt+F11). `Weight`/`LeaveAge` are dead (header untouched).
 - Chat photos live in /Game/UI/Images; run `Scripts/setup_chat_photos.py` after importing (160px, nearest, no mips, UI group).
 - Names use one `NameColor` (no per-sender rainbow); creepy msgs stay red.
-- NEVER commit (user rule). Build with `Scripts/build_only.bat` (no git). Don't create Saved/commit_msg.txt.
+- NEVER commit (user rule). Agents working through a mounted/remote folder: don't run ANY git command there (even `git status` leaves .git/index.lock when deletes are blocked). Build with `Scripts/build_only.bat` (no git). Don't create Saved/commit_msg.txt.
 - C++ header changes: run `Scripts/rebuild.bat` (waits for editor close, builds, commits with Saved/commit_msg.txt, reopens).
 
 ## NPC talk (Source/DanceDanceDie/NPCTalk.*)
@@ -81,3 +81,27 @@
   under /Game/Characters/NPC; skeletons without one get Bobby's idle retargeted via RTG_Bobby_to_<Name>) and DemoEnd's game mode.
 - Test without playing the song: PIE in DemoMap, console `ddd.FakeWin`. Log category `LogCliffhanger`.
 - `Scripts/run_build.py` = start build_only.bat from the editor Python box, then close the editor.
+
+## Main menu live background (Scripts/setup_menu_bg.py)
+- MainMenu streams `NightCityCreator` as an **Always Loaded** sublevel (keeps the city's baked lighting; copying actors would lose lightmaps).
+  Menu-only actors live in the persistent level, folder `MenuBG`: `Menu_Cam` (auto-activates for Player 0), `Menu_Seq` (`/Game/UI/MenuBG/LS_MenuBG`, loops, lamp flicker only).
+- No Michelle in the menu (user choice). Menu footsteps come from the city NPCs (see NPC footsteps).
+- Camera angle: pilot `Menu_Cam` in MainMenu (Outliner > right-click > Pilot, fly, Eject, save). The script keeps the camera where it is; `RESET_CAM=True` restores the default.
+- Loading screen now also shows at boot (LoadingScreen.cpp) so the menu's city never warms up in front of the player.
+- MainMenu game mode = `/Game/UI/BP_MainMenuGameMode` (no pawn). The default ThirdPerson mode would spawn a character at the origin = inside the city's `2Club` trigger.
+- Flicker = city lamp's movable `Point Light (1)` intensity + `EmissiveValue` on `StreetLight_LOD0` (bound across into the sublevel). Seeded random (`SEED`).
+- `Menu_Cam` copies the player camera's post process (M_PS1Horror etc.) + `EXPOSURE_EV` (+1). Re-run the script after changing the player camera PP.
+- Title = `T_MainMenuTitle` (keyed out of the old `T_MainMenuBG`, same 1195x622 frame so the widget layout is unchanged). Source PNG in `Scripts/assets/`.
+- `Scripts/vp.py`: `vp(x,y,z,pitch,yaw)` moves the editor viewport, `vpget()` logs it. `Scripts/dump_map.py` (set `MAP=` first) dumps a level's actors.
+
+## NPC footsteps (Scripts/setup_npc_footsteps.py)
+- `PlaySound` notifies on a `Footsteps` notify track of each NPC walk anim (`<Name>_Anim_mixamo_com`), so they play wherever the walk plays (city + menu).
+- Sounds: `/Game/Characters/NPC/Walk/Footsteps/SW_ConcreteStep_01..06` (cut from the user's concrete-footsteps.wav; sources in `Scripts/assets/footsteps/`),
+  each NPC gets its own pair. 3D via `ATT_Footstep` (`INNER`/`FALLOFF` in the script).
+- Notify time = heel strike, computed from the foot bones (moment the foot stops sliding). New NPC → add it to `NPCS` and re-run.
+
+## PS1 look on UI (Scripts/setup_ui_ps1.py)
+- `/Game/PostProcess/M_UI_PS1` = Retainer Box effect material: pixelate (`BlockPx`, ~screen height/180), 5-bit colour + ordered dither, RGB split, rare row glitch.
+- Used on WBP_MainMenu: `RetainerBox_0` wraps `Menu_VerticalBox` (PLAY/QUIT). Wrap any other widget the same way to get the look.
+- `Gain` 1.35: text comes out darker through the retainer otherwise. User is happy with the colour as is, don't re-tune unasked.
+- Script rebuilds the material in place. `delete_all_material_expressions` leaves orphan nodes in 5.4 (they broke the compile), so it also deletes them by name.
