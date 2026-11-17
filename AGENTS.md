@@ -59,6 +59,10 @@
   StartHold stops the Timeline → head pins at the target, tail shrinks into it. Tail width 0.22 (MakeVector Y), pushed 4uu away from camera
   so the masked arrow hides the join (translucent tail is depth-tested).
 
+- Note facing: BP_Spline SpawnActor(BP_Note1) Spawn Transform Rotation <- GetActorRotation(self). Notes used to spawn at world rot 0
+  while BP_Spline (DemoMap) is yaw -40 → moving arrows 40° off the Bullseye targets. Lane geometry dump: Scripts/dump_lanes.py → Saved/lanes_dump.txt.
+  Sizes: note Arrow scale 0.6, Bullseye 0.70875.
+
 ## Editing Blueprints from text (T3D)
 - Graph copy/paste is plain text. `Scripts/clip_t3d.py` puts `Scripts/t3d/<file>` on the clipboard:
   `py exec(open(unreal.Paths.project_dir()+'Scripts/clip_t3d.py').read()); clip('<file>')` → Ctrl+V in the graph → File ▸ Refresh All Nodes → Compile.
