@@ -105,3 +105,15 @@
 - Used on WBP_MainMenu: `RetainerBox_0` wraps `Menu_VerticalBox` (PLAY/QUIT). Wrap any other widget the same way to get the look.
 - `Gain` 1.35: text comes out darker through the retainer otherwise. User is happy with the colour as is, don't re-tune unasked.
 - Script rebuilds the material in place. `delete_all_material_expressions` leaves orphan nodes in 5.4 (they broke the compile), so it also deletes them by name.
+
+## Credits (Source/DanceDanceDie/Credits.*, Scripts/setup_credits.py)
+- `CreditsScene` (/Game/UI) game mode = `/Game/UI/BP_CreditsGameMode` (child of C++ `CreditsGameMode`). Built in code like DemoEnd, no WBP.
+- Lines, fonts, sizes, colours, speed, timings: BP_CreditsGameMode > Class Defaults > Credits (no rebuild). Line Style: Title / Heading / Name / Gap.
+  Last line stops centred (`bStopOnLastLine`), holds `EndHold`, fades, opens `NextLevel` (MainMenu).
+- Whole roll sits in a URetainerBox with `M_UI_PS1` (same look as PLAY/QUIT). Text under ~40 px gets eaten by the pixelation (headings = 44).
+- Input: Esc / Enter / click / pad B = fade out + back to menu. Hold Space / Down / S / pad A = x`FastMultiplier`.
+- Menu: `Credits_Button` / `Credits_Text` in WBP_MainMenu (between PLAY and QUIT), same hover font swap; click = glitch sound, 0.8 s delay, OpenLevel CreditsScene.
+  Graph nodes came from `Scripts/t3d/credits_menu.t3d`.
+- `CreditsScene` is in LoadingScreen `SkipMaps`. setup_credits.py re-creates the BP if missing and re-sets the level's game mode.
+- Credits colours = exact PLAY/QUIT values (text 0.25,0.9,0.08; shadow 0.45,0.02,0.42; offset 5). User approved this look; don't re-tune unasked.
+  `Scripts/credits_match_menu.py` re-applies them to BP_CreditsGameMode (colours only, leaves the Lines alone).
