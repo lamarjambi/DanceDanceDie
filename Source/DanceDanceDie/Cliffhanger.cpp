@@ -265,6 +265,7 @@ void ACliffhangerDirector::StartCredits()
 	check(Credits);
 	UCreditsWidget::FParams Prm = CreditsFrom->GetDefaultObject<ACreditsGameMode>()->MakeParams();
 	Prm.bGlitchOut = true; // "thanks for playing" glitches into "it's not over"
+	Prm.bPlayerInput = false; // unskippable after the club
 	Credits->Setup(Prm);
 	Credits->AddToViewport(1000); // above every HUD / prompt widget
 	UE_LOG(LogCliffhanger, Log, TEXT("Cliffhanger: rolling credits from %s"), *CreditsFrom->GetName());

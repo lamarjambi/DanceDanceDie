@@ -1,7 +1,8 @@
 // Credits roll (CreditsScene level). Movie-style: lines scroll up from the bottom on black, the last line stops in the
 // middle, holds, fades, then back to the menu. Built in code like DemoEnd, so no Widget Blueprint.
 // Everything editable without a rebuild: BP_CreditsGameMode -> Class Defaults -> Credits.
-// Input (polled by the widget): Esc / Enter / click / gamepad B = skip to the end. Hold Space, Down, S or gamepad A = fast-forward.
+// Input (polled by the widget, menu credits only): Esc / Enter / click / gamepad B = skip to the end. Hold Space, Down, S or gamepad A = fast-forward.
+// The demo-end credits (Cliffhanger) ignore all input.
 
 #pragma once
 
@@ -85,6 +86,7 @@ public:
 		float EndHold = 4.f;
 		bool bStopLastLine = true;
 		bool bGlitchOut = false; // true = end (and skip) with a glitch burst instead of a fade
+		bool bPlayerInput = true; // false = no skip, no fast-forward (demo end)
 		float GlitchTime = 1.f;
 		USoundBase* GlitchSound = nullptr;
 	};

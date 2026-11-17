@@ -126,7 +126,8 @@ void UCreditsWidget::NativeTick(const FGeometry& MyGeometry, float Dt)
 	if (!bPlaced) { Y = H; bPlaced = true; } // first line starts just below the bottom edge
 
 	bool bFast = false;
-	if (APlayerController* PC = GetOwningPlayer())
+	APlayerController* PC = P.bPlayerInput ? GetOwningPlayer() : nullptr;
+	if (PC)
 	{
 		static const FKey SkipKeys[] = {
 			EKeys::Escape, EKeys::Enter, EKeys::LeftMouseButton, EKeys::Gamepad_FaceButton_Right, EKeys::Gamepad_Special_Right,
