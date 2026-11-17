@@ -78,6 +78,7 @@ public:
 		UFont* Font = nullptr;
 		FCreditLook Title, Heading, Name;
 		float GapSize = 80.f;
+		float PixelRows = 270.f;
 		UMaterialInterface* Effect = nullptr;
 		float Speed = 70.f;
 		float FastMultiplier = 5.f;
@@ -142,6 +143,11 @@ public:
 	// height of a Gap line
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Credits|Look", meta = (ClampMin = 0))
 	float GapSize = 90.f;
+
+	// screen height in PS1 blocks, same on every resolution (270 = 4 px blocks at 1080p, like the menu).
+	// Lower = chunkier. A fixed pixel size made the text unreadable on small screens.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Credits|Look", meta = (ClampMin = 30))
+	float PixelRows = 270.f;
 
 	// Retainer effect over the whole roll (PS1 pixelate/glitch). Empty = plain text.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Credits|Look")

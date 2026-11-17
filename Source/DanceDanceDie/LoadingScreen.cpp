@@ -4,6 +4,9 @@
 #include "ContentStreaming.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/UserInterfaceSettings.h"
+#include "UnrealEngine.h" // GSystemResolution
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "MoviePlayer.h"
@@ -69,6 +72,22 @@ void ULoadingScreenSubsystem::OnPreLoadMap(const FString& MapName)
 	A.bAutoCompleteWhenLoadingCompletes = true;
 	A.bWaitForManualStop = false;
 	A.bAllowEngineTick = false;
+	// match the in-game DPI curve. by default MoviePlayer uses DPI 1.0 x the OS display scale,
+	// while the phase-2 viewport overlay uses Project Settings > User Interface > DPI curve,
+	// so the widget visibly changed size when the two phases swapped.
+	// on the very first map load (boot) the game viewport doesn't exist yet,
+	// so fall back to the resolution the game window is being created at.
+	FIntPoint ViewportSize(0, 0);
+	if (GEngine && GEngine->GameViewport && GEngine->GameViewport->Viewport)
+	{
+		ViewportSize = GEngine->GameViewport->Viewport->GetSizeXY();
+	}
+	if (ViewportSize.X <= 0 || ViewportSize.Y <= 0)
+	{
+		ViewportSize = FIntPoint(GSystemResolution.ResX, GSystemResolution.ResY);
+	}
+	checkf(ViewportSize.X > 0 && ViewportSize.Y > 0, TEXT("LoadingScreen: no game viewport size for DPI scale"));
+	GetMoviePlayer()->SetViewportDPIScale(GetDefault<UUserInterfaceSettings>()->GetDPIScaleBasedOnSize(ViewportSize));
 	GetMoviePlayer()->SetupLoadingScreen(A);
 
 	bActive = true;

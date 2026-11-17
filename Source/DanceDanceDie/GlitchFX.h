@@ -11,12 +11,28 @@
 
 struct FGlitchFX
 {
+	// M_UI_PS1's BlockPx for this retainer so the screen is always ~Rows blocks tall (270 = 4 px blocks at 1080p).
+	// A fixed BlockPx made text unreadable on small screens: letters shrink, blocks don't. 0 if not laid out yet.
+	static float BlockPxFor(const URetainerBox* R, float Rows)
+	{
+		const float H = R ? R->GetCachedGeometry().GetAbsoluteSize().Y : 0.f; // real pixels
+		return (H > 0.f && Rows > 0.f) ? FMath::Max(H / Rows, 1.f) : 0.f;
+	}
+
+	// sets BlockPx from the screen size; call every tick (cheap) so window resizes are picked up
+	static void FitBlocks(URetainerBox* R, float Rows)
+	{
+		const float B = BlockPxFor(R, Rows);
+		UMaterialInstanceDynamic* M = R ? R->GetEffectMaterial() : nullptr;
+		if (M && B > 0.f) { M->SetScalarParameterValue(TEXT("BlockPx"), B); }
+	}
+
 	float BaseBlock = 4.f;
 	float BaseSplit = 0.6f;
 	int32 SoundsPlayed = 0;
 
 	// Effect: M_UI_PS1 (or an MI of it). Puts it on the retainer if it isn't there yet.
-	void Start(URetainerBox* R, UMaterialInterface* Effect, USoundBase* Sound)
+	void Start(URetainerBox* R, UMaterialInterface* Effect, USoundBase* Sound, float Rows = 270.f)
 	{
 		check(R);
 		if (Effect && R->GetEffectMaterial() == nullptr) { R->SetEffectMaterial(Effect); R->SetTextureParameter(TEXT("Texture")); }
@@ -27,7 +43,8 @@ struct FGlitchFX
 		}
 		else
 		{
-			BaseBlock = FMath::Max(M->K2_GetScalarParameterValue(TEXT("BlockPx")), 1.f);
+			const float Fit = BlockPxFor(R, Rows);
+			BaseBlock = Fit > 0.f ? Fit : FMath::Max(M->K2_GetScalarParameterValue(TEXT("BlockPx")), 1.f);
 			BaseSplit = M->K2_GetScalarParameterValue(TEXT("Split"));
 		}
 		SoundsPlayed = 0;

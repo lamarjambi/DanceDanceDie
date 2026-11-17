@@ -114,7 +114,7 @@ void UCreditsWidget::Leave()
 {
 	if (Phase == EPhase::FadeOut || Phase == EPhase::GlitchOut || Phase == EPhase::Done) { return; }
 	Clock = 0.f;
-	if (P.bGlitchOut) { Phase = EPhase::GlitchOut; Glitch.Start(Retainer, P.Effect, P.GlitchSound); }
+	if (P.bGlitchOut) { Phase = EPhase::GlitchOut; Glitch.Start(Retainer, P.Effect, P.GlitchSound, P.PixelRows); }
 	else { Phase = EPhase::FadeOut; }
 }
 
@@ -140,6 +140,7 @@ void UCreditsWidget::NativeTick(const FGeometry& MyGeometry, float Dt)
 			|| PC->IsInputKeyDown(EKeys::Gamepad_FaceButton_Bottom) || PC->IsInputKeyDown(EKeys::Gamepad_DPad_Down);
 	}
 	const float Mult = bFast ? P.FastMultiplier : 1.f;
+	if (Phase != EPhase::GlitchOut) { FGlitchFX::FitBlocks(Retainer, P.PixelRows); }
 	Clock += Dt;
 
 	switch (Phase)
@@ -265,6 +266,7 @@ UCreditsWidget::FParams ACreditsGameMode::MakeParams() const
 	Prm.Heading = HeadingLook;
 	Prm.Name = NameLook;
 	Prm.GapSize = GapSize;
+	Prm.PixelRows = PixelRows;
 	Prm.Effect = Effect;
 	Prm.Speed = ScrollSpeed;
 	Prm.FastMultiplier = FastMultiplier;

@@ -128,6 +128,8 @@
   credits as an overlay right in DemoMap (same widget, lines/look from CreditsFrom's Class Defaults = one list for menu + demo), then OpenLevel(EndLevel = DemoEnd).
   Flow: stare -> credits (glitch out) -> "it's not over" (white, then red + glitch together) -> MainMenu. No extra level.
   Demo-end credits are UNSKIPPABLE (FParams.bPlayerInput=false: no skip, no fast-forward). Menu credits keep skip + fast-forward.
+- PS1 block size is resolution-relative in the credits/DemoEnd: `FGlitchFX::FitBlocks` sets M_UI_PS1 `BlockPx` = screen px height / `PixelRows`
+  (270 = 4 px at 1080p). A fixed BlockPx made small text unreadable on small screens/windows. WBP_MainMenu still uses the fixed BlockPx 4.
 - Glitch burst = `GlitchFX.h` (FGlitchFX Start/Frame) on a URetainerBox with M_UI_PS1: spikes Glitch/Split/BlockPx/Dither params, jitter, dropped frames,
   glitch-click at 0/40/75%. DemoEnd only puts the effect material on when the glitch starts, so the line is plain until then.
 - Rebuild gotcha: closing the editor (File > Exit or quit_editor) pops up the Unreal Project Browser, which blocks build_only.bat
