@@ -14,6 +14,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInterface.h"
+#include "Sound/SoundBase.h"
 #include "Styling/CoreStyle.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -111,9 +112,10 @@ void UCreditsWidget::Setup(const FParams& In)
 
 void UCreditsWidget::Leave()
 {
-	if (Phase == EPhase::FadeOut || Phase == EPhase::Done) { return; }
-	Phase = EPhase::FadeOut;
+	if (Phase == EPhase::FadeOut || Phase == EPhase::GlitchOut || Phase == EPhase::Done) { return; }
 	Clock = 0.f;
+	if (P.bGlitchOut) { Phase = EPhase::GlitchOut; Glitch.Start(Retainer, P.Effect, P.GlitchSound); }
+	else { Phase = EPhase::FadeOut; }
 }
 
 void UCreditsWidget::NativeTick(const FGeometry& MyGeometry, float Dt)
@@ -123,6 +125,19 @@ void UCreditsWidget::NativeTick(const FGeometry& MyGeometry, float Dt)
 	if (H <= 0.f || !RollSlot) { return; }
 	if (!bPlaced) { Y = H; bPlaced = true; } // first line starts just below the bottom edge
 
+	bool bFast = false;
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		static const FKey SkipKeys[] = {
+			EKeys::Escape, EKeys::Enter, EKeys::LeftMouseButton, EKeys::Gamepad_FaceButton_Right, EKeys::Gamepad_Special_Right,
+		};
+		for (const FKey& K : SkipKeys)
+		{
+			if (PC->WasInputKeyJustPressed(K)) { Leave(); break; }
+		}
+		bFast = PC->IsInputKeyDown(EKeys::SpaceBar) || PC->IsInputKeyDown(EKeys::Down) || PC->IsInputKeyDown(EKeys::S)
+			|| PC->IsInputKeyDown(EKeys::Gamepad_FaceButton_Bottom) || PC->IsInputKeyDown(EKeys::Gamepad_DPad_Down);
+	}
 	const float Mult = bFast ? P.FastMultiplier : 1.f;
 	Clock += Dt;
 
@@ -148,7 +163,12 @@ void UCreditsWidget::NativeTick(const FGeometry& MyGeometry, float Dt)
 
 	case EPhase::Hold:
 		Clock += Dt * (Mult - 1.f);
-		if (Clock >= P.EndHold) { Phase = EPhase::FadeOut; Clock = 0.f; }
+		if (Clock >= P.EndHold) { Leave(); }
+		break;
+
+	case EPhase::GlitchOut:
+		Glitch.Frame(Retainer, Clock / P.GlitchTime, P.GlitchSound);
+		if (Clock >= P.GlitchTime) { Retainer->SetRenderOpacity(0.f); Phase = EPhase::Done; } // hard cut to black
 		break;
 
 	case EPhase::FadeOut:
@@ -174,6 +194,8 @@ ACreditsGameMode::ACreditsGameMode()
 	Font = Vt323.Object;
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Ps1(TEXT("/Game/PostProcess/M_UI_PS1.M_UI_PS1"));
 	Effect = Ps1.Object;
+	static ConstructorHelpers::FObjectFinder<USoundBase> Click(TEXT("/Game/Rhythm/Audio/glitch-click.glitch-click"));
+	GlitchSound = Click.Object;
 
 	// exact PLAY / QUIT values (WBP_MainMenu Quit_Text)
 	const FLinearColor Lime(0.25f, 0.9f, 0.08f);
@@ -226,6 +248,15 @@ void ACreditsGameMode::BeginPlay()
 	Screen = CreateWidget<UCreditsWidget>(PC, UCreditsWidget::StaticClass());
 	check(Screen);
 
+	Screen->Setup(MakeParams());
+	Screen->AddToViewport(100);
+
+	PC->SetInputMode(FInputModeGameOnly());
+	PC->bShowMouseCursor = false;
+}
+
+UCreditsWidget::FParams ACreditsGameMode::MakeParams() const
+{
 	UCreditsWidget::FParams Prm;
 	Prm.Lines = Lines;
 	Prm.Font = Font;
@@ -240,36 +271,16 @@ void ACreditsGameMode::BeginPlay()
 	Prm.FadeTime = FadeTime;
 	Prm.EndHold = EndHold;
 	Prm.bStopLastLine = bStopOnLastLine;
-	Screen->Setup(Prm);
-	Screen->AddToViewport(100);
-
-	PC->SetInputMode(FInputModeGameOnly());
-	PC->bShowMouseCursor = false;
+	Prm.GlitchTime = GlitchTime;
+	Prm.GlitchSound = GlitchSound;
+	return Prm;
 }
 
 void ACreditsGameMode::Tick(float Dt)
 {
 	Super::Tick(Dt);
-	if (!Screen || bLeaving) { return; }
-
-	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
-	if (PC)
-	{
-		static const FKey SkipKeys[] = {
-			EKeys::Escape, EKeys::Enter, EKeys::LeftMouseButton, EKeys::Gamepad_FaceButton_Right, EKeys::Gamepad_Special_Right,
-		};
-		for (const FKey& K : SkipKeys)
-		{
-			if (PC->WasInputKeyJustPressed(K)) { Screen->Leave(); break; }
-		}
-		Screen->SetFast(PC->IsInputKeyDown(EKeys::SpaceBar) || PC->IsInputKeyDown(EKeys::Down) || PC->IsInputKeyDown(EKeys::S)
-			|| PC->IsInputKeyDown(EKeys::Gamepad_FaceButton_Bottom) || PC->IsInputKeyDown(EKeys::Gamepad_DPad_Down));
-	}
-
-	if (Screen->IsDone())
-	{
-		bLeaving = true;
-		if (NextLevel.IsNone()) { CreditsError(TEXT("Credits: NextLevel is empty, staying put")); return; }
-		UGameplayStatics::OpenLevel(this, NextLevel);
-	}
+	if (!Screen || bLeaving || !Screen->IsDone()) { return; }
+	bLeaving = true;
+	if (NextLevel.IsNone()) { CreditsError(TEXT("Credits: NextLevel is empty, staying put")); return; }
+	UGameplayStatics::OpenLevel(this, NextLevel);
 }

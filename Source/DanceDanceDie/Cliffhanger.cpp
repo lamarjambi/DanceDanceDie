@@ -1,4 +1,5 @@
 #include "Cliffhanger.h"
+#include "Credits.h"
 #include "NPCTalk.h"
 
 #include "Animation/AnimationAsset.h"
@@ -9,6 +10,8 @@
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
+#include "Components/RetainerBox.h"
+#include "Materials/MaterialInterface.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/TextBlock.h"
 #include "Engine/SkeletalMesh.h"
@@ -50,6 +53,8 @@ ACliffhangerDirector::ACliffhangerDirector()
 	FlickerStartSound = Suspense.Object;
 	static ConstructorHelpers::FObjectFinder<USoundBase> Click(TEXT("/Game/Rhythm/Audio/glitch-click.glitch-click"));
 	FlickerTickSound = Click.Object;
+	static ConstructorHelpers::FClassFinder<ACreditsGameMode> CreditsBP(TEXT("/Game/UI/BP_CreditsGameMode"));
+	CreditsFrom = CreditsBP.Class;
 }
 
 void ACliffhangerDirector::Fail(const FString& Why)
@@ -70,6 +75,7 @@ void ACliffhangerDirector::BeginPlay()
 	if (Dancers.IsEmpty()) { Fail(FString::Printf(TEXT("no actors tagged '%s'"), *PartyTag.ToString())); return; }
 	if (Lines.IsEmpty()) { Fail(TEXT("no Lines")); return; }
 	if (EndLevel.IsNone()) { Fail(TEXT("EndLevel is empty")); return; }
+	if (bRollCredits && !CreditsFrom) { Fail(TEXT("Roll Credits is on but Credits From is empty")); return; }
 }
 
 void ACliffhangerDirector::Tick(float Dt)
@@ -126,15 +132,18 @@ void ACliffhangerDirector::Tick(float Dt)
 		TickMusicFade();
 		if (Clock >= StareHold)
 		{
-			Phase = EPhase::Done;
-			UE_LOG(LogCliffhanger, Log, TEXT("Cliffhanger: cut to %s"), *EndLevel.ToString());
 			for (const FFadingSound& S : Sounds)
 			{
 				if (UAudioComponent* C = S.Comp.Get()) { C->Stop(); }
 			}
 			SetDark(true);
-			UGameplayStatics::OpenLevel(this, EndLevel);
+			if (bRollCredits) { StartCredits(); }
+			else { CutToEnd(); }
 		}
+		break;
+
+	case EPhase::Credits:
+		if (!Credits || Credits->IsDone()) { CutToEnd(); } // widget backdrop keeps the screen black through the cut
 		break;
 
 	case EPhase::Done:
@@ -246,6 +255,28 @@ void ACliffhangerDirector::StartFlicker()
 	}
 }
 
+void ACliffhangerDirector::StartCredits()
+{
+	Phase = EPhase::Credits;
+	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+	check(PC && CreditsFrom);
+	PC->SetIgnoreLookInput(true);
+	Credits = CreateWidget<UCreditsWidget>(PC, UCreditsWidget::StaticClass());
+	check(Credits);
+	UCreditsWidget::FParams Prm = CreditsFrom->GetDefaultObject<ACreditsGameMode>()->MakeParams();
+	Prm.bGlitchOut = true; // "thanks for playing" glitches into "it's not over"
+	Credits->Setup(Prm);
+	Credits->AddToViewport(1000); // above every HUD / prompt widget
+	UE_LOG(LogCliffhanger, Log, TEXT("Cliffhanger: rolling credits from %s"), *CreditsFrom->GetName());
+}
+
+void ACliffhangerDirector::CutToEnd()
+{
+	Phase = EPhase::Done;
+	UE_LOG(LogCliffhanger, Log, TEXT("Cliffhanger: cut to %s"), *EndLevel.ToString());
+	UGameplayStatics::OpenLevel(this, EndLevel);
+}
+
 void ACliffhangerDirector::StartStare()
 {
 	Phase = EPhase::Stare;
@@ -312,11 +343,21 @@ void UDemoEndWidget::NativeOnInitialized()
 		S->SetOffsets(FMargin(0.f));
 	}
 
+	// no effect material until the glitch, so the line looks plain until then
+	Retainer = WidgetTree->ConstructWidget<URetainerBox>(URetainerBox::StaticClass(), TEXT("Retainer"));
+	{
+		UCanvasPanelSlot* S = Root->AddChildToCanvas(Retainer);
+		S->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+		S->SetOffsets(FMargin(0.f));
+	}
+	UCanvasPanel* Stage = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("Stage"));
+	Retainer->AddChild(Stage);
+
 	Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Line"));
 	Text->SetJustification(ETextJustify::Center);
 	Text->SetVisibility(ESlateVisibility::Hidden);
 	{
-		UCanvasPanelSlot* S = Root->AddChildToCanvas(Text);
+		UCanvasPanelSlot* S = Stage->AddChildToCanvas(Text);
 		S->SetAnchors(FAnchors(0.5f, 0.5f));
 		S->SetAlignment(FVector2D(0.5f, 0.5f));
 		S->SetAutoSize(true);
@@ -338,12 +379,40 @@ void UDemoEndWidget::ShowLine()
 	Text->SetVisibility(ESlateVisibility::HitTestInvisible);
 }
 
+void UDemoEndWidget::SetColor(const FLinearColor& Color)
+{
+	check(Text);
+	Text->SetColorAndOpacity(FSlateColor(Color));
+}
+
+void UDemoEndWidget::StartGlitch(UMaterialInterface* Effect, float Time, USoundBase* Sound)
+{
+	check(Retainer);
+	GlitchSound = Sound;
+	GlitchTime = FMath::Max(Time, 0.05f);
+	GlitchClock = 0.f;
+	Glitch.Start(Retainer, Effect, Sound);
+}
+
+void UDemoEndWidget::NativeTick(const FGeometry& MyGeometry, float Dt)
+{
+	Super::NativeTick(MyGeometry, Dt);
+	if (GlitchTime <= 0.f) { return; }
+	GlitchClock += Dt;
+	if (GlitchClock >= GlitchTime) { Retainer->SetRenderOpacity(0.f); GlitchTime = 0.f; return; } // black until the level changes
+	Glitch.Frame(Retainer, GlitchClock / GlitchTime, GlitchSound);
+}
+
 ADemoEndGameMode::ADemoEndGameMode()
 {
 	DefaultPawnClass = nullptr; // nothing to control, the widget covers the screen
 
 	static ConstructorHelpers::FObjectFinder<UFont> Vt323(TEXT("/Game/UI/Fonts/VT323-Regular_Font.VT323-Regular_Font"));
 	Font = Vt323.Object;
+	static ConstructorHelpers::FObjectFinder<USoundBase> Click(TEXT("/Game/Rhythm/Audio/glitch-click.glitch-click"));
+	GlitchSound = Click.Object;
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Ps1(TEXT("/Game/PostProcess/M_UI_PS1.M_UI_PS1"));
+	GlitchEffect = Ps1.Object;
 }
 
 void ADemoEndGameMode::BeginPlay()
@@ -361,11 +430,22 @@ void ADemoEndGameMode::BeginPlay()
 	PC->SetInputMode(FInputModeGameOnly());
 	PC->bShowMouseCursor = false;
 
-	FTimerHandle ShowTimer, LeaveTimer;
+	if (!GlitchEffect) { UE_LOG(LogCliffhanger, Error, TEXT("DemoEnd: GlitchEffect (M_UI_PS1) not set, glitch will be jitter only")); }
+
+	FTimerHandle ShowTimer, GlitchTimer, LeaveTimer;
 	GetWorldTimerManager().SetTimer(ShowTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
 	{
 		if (Screen) { Screen->ShowLine(); }
 	}), FMath::Max(TextDelay, 0.01f), false);
+
+	GetWorldTimerManager().SetTimer(GlitchTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+	{
+		if (Screen)
+		{
+			Screen->SetColor(RedColor); // red and glitch hit together
+			Screen->StartGlitch(GlitchEffect, GlitchTime, GlitchSound);
+		}
+	}), FMath::Max(TextDelay + HoldTime, 0.01f), false);
 
 	GetWorldTimerManager().SetTimer(LeaveTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
 	{
@@ -376,5 +456,5 @@ void ADemoEndGameMode::BeginPlay()
 			return;
 		}
 		UGameplayStatics::OpenLevel(this, NextLevel);
-	}), FMath::Max(TextDelay + HoldTime, 0.02f), false);
+	}), FMath::Max(TextDelay + HoldTime + GlitchTime, 0.02f), false);
 }

@@ -1,18 +1,20 @@
 // Credits roll (CreditsScene level). Movie-style: lines scroll up from the bottom on black, the last line stops in the
 // middle, holds, fades, then back to the menu. Built in code like DemoEnd, so no Widget Blueprint.
 // Everything editable without a rebuild: BP_CreditsGameMode -> Class Defaults -> Credits.
-// Input: Esc / Enter / click / gamepad B = back to menu. Hold Space, Down, S or gamepad A = fast-forward.
+// Input (polled by the widget): Esc / Enter / click / gamepad B = skip to the end. Hold Space, Down, S or gamepad A = fast-forward.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "GlitchFX.h"
 #include "GameFramework/GameModeBase.h"
 #include "Credits.generated.h"
 
 class UCanvasPanelSlot;
 class UFont;
 class UMaterialInterface;
+class USoundBase;
 class URetainerBox;
 class UVerticalBox;
 
@@ -82,11 +84,13 @@ public:
 		float FadeTime = 1.f;
 		float EndHold = 4.f;
 		bool bStopLastLine = true;
+		bool bGlitchOut = false; // true = end (and skip) with a glitch burst instead of a fade
+		float GlitchTime = 1.f;
+		USoundBase* GlitchSound = nullptr;
 	};
 
 	void Setup(const FParams& In);
-	void SetFast(bool bInFast) { bFast = bInFast; }
-	void Leave(); // fade out now (skip)
+	void Leave(); // fade / glitch out now (skip)
 	bool IsDone() const { return Phase == EPhase::Done; }
 
 protected:
@@ -94,7 +98,7 @@ protected:
 	virtual void NativeTick(const FGeometry& MyGeometry, float Dt) override;
 
 private:
-	enum class EPhase : uint8 { Wait, Roll, Hold, FadeOut, Done };
+	enum class EPhase : uint8 { Wait, Roll, Hold, FadeOut, GlitchOut, Done };
 
 	UPROPERTY() TObjectPtr<URetainerBox> Retainer;
 	UPROPERTY() TObjectPtr<UVerticalBox> Roll;
@@ -102,11 +106,11 @@ private:
 	UPROPERTY() TObjectPtr<UWidget> LastLine;
 
 	FParams P;
+	FGlitchFX Glitch;
 	EPhase Phase = EPhase::Wait;
 	float Clock = 0.f;
 	float Y = 0.f;
 	bool bPlaced = false;
-	bool bFast = false;
 };
 
 UCLASS()
@@ -164,10 +168,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Credits|Timing")
 	bool bStopOnLastLine = true;
 
+	// demo end only (the Cliffhanger turns it on): secs of glitching after "thanks for playing", instead of the fade
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Credits|Glitch", meta = (ClampMin = 0.05))
+	float GlitchTime = 1.f;
+
+	// 2D, plays when the glitch starts and twice more during it
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Credits|Glitch")
+	TObjectPtr<USoundBase> GlitchSound;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Credits")
 	FName NextLevel = TEXT("/Game/UI/MainMenu");
 
 	virtual void Tick(float Dt) override;
+
+	// everything above, packed for UCreditsWidget::Setup (also used by the demo-end credits in Cliffhanger)
+	UCreditsWidget::FParams MakeParams() const;
 
 protected:
 	virtual void BeginPlay() override;

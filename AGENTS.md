@@ -17,6 +17,9 @@
 - Keep rendered rows (screen height × screen %) ≥ 180.
 - PixelUV2 now returns `ViewportUVToSceneTextureUV(vp, 14)` (Scripts/fix_pp_viewportuv.py). The old View.* math zoomed the
   image 1/0.6 from the top-left in PIE at 60%, so world and UI (e.g. NPC E prompt) didn't line up. Don't go back to View.* math.
+- EVERY SceneTexture in M_PS1Horror must take PixelUV2 as UV (Col AND Stencil). The CustomStencil node (arrows) had no UV →
+  full-res mask vs 180-row colour → arrows drew twice (dim graded + bright boosted copy). Fixed by Scripts/fix_pp_stencil_uv.py.
+  Inspect the graph: Scripts/dump_pp_graph.py → Saved/pp_graph.txt.
 
 ## Scripts
 - Editor Python lives in `Scripts/`. Run from the editor's Python box:
@@ -111,9 +114,12 @@
 - Lines, fonts, sizes, colours, speed, timings: BP_CreditsGameMode > Class Defaults > Credits (no rebuild). Line Style: Title / Heading / Name / Gap.
   Last line stops centred (`bStopOnLastLine`), holds `EndHold`, fades, opens `NextLevel` (MainMenu).
 - Whole roll sits in a URetainerBox with `M_UI_PS1` (same look as PLAY/QUIT). Text under ~40 px gets eaten by the pixelation (headings = 44).
-- Input: Esc / Enter / click / pad B = fade out + back to menu. Hold Space / Down / S / pad A = x`FastMultiplier`.
+- Input (polled in UCreditsWidget::NativeTick): Esc / Enter / click / pad B = fade out + go on. In PIE Esc stops play, so test skipping with Enter/click. Hold Space / Down / S / pad A = x`FastMultiplier`.
 - Menu: `Credits_Button` / `Credits_Text` in WBP_MainMenu (between PLAY and QUIT), same hover font swap; click = glitch sound, 0.8 s delay, OpenLevel CreditsScene.
   Graph nodes came from `Scripts/t3d/credits_menu.t3d`.
 - `CreditsScene` is in LoadingScreen `SkipMaps`. setup_credits.py re-creates the BP if missing and re-sets the level's game mode.
 - Credits colours = exact PLAY/QUIT values (text 0.25,0.9,0.08; shadow 0.45,0.02,0.42; offset 5). User approved this look; don't re-tune unasked.
   `Scripts/credits_match_menu.py` re-applies them to BP_CreditsGameMode (colours only, leaves the Lines alone).
+- Demo end: `Cliffhanger` actor (DemoMap) has `bRollCredits` (default on) + `CreditsFrom` (= BP_CreditsGameMode). After the stare it rolls the
+  credits as an overlay right in DemoMap (same widget, lines/look from CreditsFrom's Class Defaults = one list for menu + demo), then OpenLevel(EndLevel = DemoEnd).
+  Flow: stare -> credits -> "it's not over" -> MainMenu. Skipping the credits still lands on "it's not over". No extra level.

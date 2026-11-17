@@ -9,12 +9,13 @@
 //   4. stare: lights back, everyone is standing still facing the player, who can look but not walk.
 //   5. hard cut to EndLevel (DemoEnd).
 //
-// ADemoEndGameMode (game mode override of the DemoEnd level): black screen, one line of text, back to the menu.
+// ADemoEndGameMode (game mode override of the DemoEnd level): black screen, one line of text (white -> red -> glitch), back to the menu.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "GlitchFX.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/GameModeBase.h"
 #include "Cliffhanger.generated.h"
@@ -27,6 +28,10 @@ class USoundBase;
 class UFont;
 class UImage;
 class UTextBlock;
+class URetainerBox;
+class UMaterialInterface;
+class ACreditsGameMode;
+class UCreditsWidget;
 
 UCLASS()
 class DANCEDANCEDIE_API ACliffhangerDirector : public AActor
@@ -87,13 +92,21 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Cliffhanger")
 	FName EndLevel = TEXT("/Game/UI/DemoEnd");
 
+	// after the stare: roll the credits over black, right here, then open EndLevel ("it's not over")
+	UPROPERTY(EditAnywhere, Category = "Cliffhanger|Credits")
+	bool bRollCredits = true;
+
+	// credits text + look come from this game mode's Class Defaults, so the menu and the demo end share one list
+	UPROPERTY(EditAnywhere, Category = "Cliffhanger|Credits", meta = (EditCondition = "bRollCredits"))
+	TSubclassOf<ACreditsGameMode> CreditsFrom;
+
 	virtual void Tick(float Dt) override;
 
 protected:
 	virtual void BeginPlay() override;
 
 private:
-	enum class EPhase : uint8 { Waiting, Party, Flicker, Stare, Done };
+	enum class EPhase : uint8 { Waiting, Party, Flicker, Stare, Credits, Done };
 
 	struct FFadingSound
 	{
@@ -106,6 +119,8 @@ private:
 	void StartParty();
 	void StartFlicker();
 	void StartStare();
+	void StartCredits();
+	void CutToEnd();
 	void SetDark(bool bDark);
 	void TickMusicFade();
 	void PoseAndFace(AActor* Dancer, const FVector& CamLoc);
@@ -114,6 +129,7 @@ private:
 
 	UPROPERTY() TArray<TObjectPtr<AActor>> Dancers;
 	UPROPERTY() TArray<TObjectPtr<ANPCTalker>> Talkers;
+	UPROPERTY() TObjectPtr<UCreditsWidget> Credits;
 	TArray<FFadingSound> Sounds;
 
 	EPhase Phase = EPhase::Waiting;
@@ -135,13 +151,22 @@ class DANCEDANCEDIE_API UDemoEndWidget : public UUserWidget
 public:
 	void Setup(const FString& Line, UFont* Font, int32 Size, const FLinearColor& Color);
 	void ShowLine();
+	void SetColor(const FLinearColor& Color);
+	// Effect goes on only now, so the line looks exactly as before until it glitches
+	void StartGlitch(UMaterialInterface* Effect, float Time, USoundBase* Sound);
 
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float Dt) override;
 
 private:
 	UPROPERTY() TObjectPtr<UImage> Backdrop;
+	UPROPERTY() TObjectPtr<URetainerBox> Retainer;
 	UPROPERTY() TObjectPtr<UTextBlock> Text;
+	UPROPERTY() TObjectPtr<USoundBase> GlitchSound;
+	FGlitchFX Glitch;
+	float GlitchTime = 0.f; // 0 = not glitching
+	float GlitchClock = 0.f;
 };
 
 UCLASS()
@@ -168,9 +193,25 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Demo End", meta = (ClampMin = 0))
 	float TextDelay = 1.f;
 
-	// secs the line stays up before NextLevel opens
+	// secs the line stays up (TextColor) before it turns red and glitches out
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Demo End", meta = (ClampMin = 0))
 	float HoldTime = 4.f;
+
+	// the line snaps to this colour the moment the glitch starts
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Demo End|Glitch")
+	FLinearColor RedColor = FLinearColor(1.f, 0.03f, 0.03f);
+
+	// secs of glitching before NextLevel opens
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Demo End|Glitch", meta = (ClampMin = 0.05))
+	float GlitchTime = 1.f;
+
+	// 2D, plays when the glitch starts and twice more during it
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Demo End|Glitch")
+	TObjectPtr<USoundBase> GlitchSound;
+
+	// M_UI_PS1 (same shader as the menu buttons), only switched on for the glitch
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Demo End|Glitch")
+	TObjectPtr<UMaterialInterface> GlitchEffect;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Demo End")
 	FName NextLevel = TEXT("/Game/UI/MainMenu");
