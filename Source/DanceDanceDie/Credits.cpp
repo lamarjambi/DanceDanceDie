@@ -229,7 +229,7 @@ ACreditsGameMode::ACreditsGameMode()
 	Hd(TEXT("AND HER FRIENDS"));     N(TEXT("Mateo")); N(TEXT("Ava")); N(TEXT("Cass")); N(TEXT("Ade"));
 	Hd(TEXT("MUSIC"));               N(TEXT("RiVER - Another")); N(TEXT("RiVER - 7"));
 	Hd(TEXT("CHARACTERS & DANCES")); N(TEXT("Mixamo"));
-	Hd(TEXT("FONTS"));               N(TEXT("VT323")); N(TEXT("Rubik / Rubik Glitch"));
+	Hd(TEXT("MAPS"));               N(TEXT("City Map Creator by Dexsoft Games")); N(TEXT("Night Club [UE] by IL.ranch"));
 	Hd(TEXT("PLAYTESTERS"));         N(TEXT("Mateo")); N(TEXT("River"));
 	Hd(TEXT("MADE WITH"));           N(TEXT("Unreal Engine 5.4"));
 	Lines.Emplace(ECreditStyle::Gap, TEXT(""));

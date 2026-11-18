@@ -134,3 +134,13 @@
   glitch-click at 0/40/75%. DemoEnd only puts the effect material on when the glitch starts, so the line is plain until then.
 - Rebuild gotcha: closing the editor (File > Exit or quit_editor) pops up the Unreal Project Browser, which blocks build_only.bat
   (it waits for every UnrealEditor.exe). Computer-use clicks don't reach it: ask the user to press Cancel.
+
+## Song title card + progress bar (Source/DanceDanceDie/SongHUD.*, Scripts/setup_song_hud.py)
+- All C++, no BP wiring. `SongHUD` actor in DemoMap (placed by setup_song_hud.py) reads BP_Spline vars by reflection: `CueAudio`, `MusicAudio`.
+- BP_Spline StartSong starts the cue MetaSound (spawns notes) ~3.6 s BEFORE the music (note lead-in). So "rhythm part started" = CueAudio playing.
+- Flow: cue starts -> SongHUD calls BP_Spline `StopSong` (no notes yet) -> big centred title (VT323, menu green/purple) `IntroHold`,
+  shrinks to `CornerAnchor`/`CornerOffset` over `MoveTime` -> calls `StartSong` again -> music starts -> bar + "m:ss / m:ss" fade in.
+  Untick `bHoldSongForIntro` to not touch the song. Fail (BP StopSong -> Delay -> StartSong) = title stays in the corner, bar resets, no 2nd intro.
+  Music stops after 90% = done -> fade out.
+- Title/sizes/colours/timings: SongHUD actor Details > Song HUD (no rebuild). Test visuals: PIE, console `ddd.SongHUD [secs]` (fake song, no BP calls).
+- Unattended playtests fail ~2 s into the music (missed notes -> Jumpscare -> RESTART loop). Expected, not a HUD bug.
