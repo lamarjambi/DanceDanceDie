@@ -143,5 +143,8 @@
   and follow that timer, NOT the whole track (track is reused elsewhere). `SongLength` > 0 = fixed length from the music start instead.
   Untick `bHoldSongForIntro` to not touch the song. Fail (BP StopSong -> Delay -> StartSong) = title stays in the corner, bar resets, no 2nd intro.
   Stops with >= 95% of the timer gone (SongComplete) = done -> fade out.
+- Jumpscare = a fail (BP_Spline prints "Jumpscare" 1 frame before StopSong). HUD hides instantly on the early stop, stays hidden until
+  the next run's SongTimer runs, fades back over `ScareReturnTime`. Don't key off BP_Jumpscare `ScareActive`/visibility: on for the whole rhythm part.
+  HUD widget ZOrder -1 = under every other widget (Blackout etc.).
 - Title/sizes/colours/timings: SongHUD actor Details > Song HUD (no rebuild). Test visuals: PIE, console `ddd.SongHUD [secs]` (fake song, no BP calls).
 - Unattended playtests fail ~2 s into the music (missed notes -> Jumpscare -> RESTART loop). Expected, not a HUD bug.

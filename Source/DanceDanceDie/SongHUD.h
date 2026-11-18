@@ -7,7 +7,10 @@
 //   2. BP_Spline `SongTimer` running (= the rhythm part, e.g. 45 s; ends with SongComplete) -> time ("0:12 / 0:45", under the
 //      title) + bar fade in and follow that timer. SongLength > 0 overrides: count from the music start instead.
 //   3. fail (jumpscare -> BP clears SongTimer, restarts) -> title + time + bar stay in the corner, reset to 0. no second intro.
-//      song done (stopped after 90%) -> everything fades out.
+//      song done -> everything fades out.
+//   jumpscare = the fail (BP_Spline prints Jumpscare 1 frame before StopSong) -> HUD hidden instantly until the next run starts,
+//      then fades back over ScareReturnTime. (BP_Jumpscare's ScareActive/visibility is useless: on for the whole rhythm part.)
+//   HUD is under every other widget (ZOrder -1).
 // test without the song: PIE in DemoMap, console `ddd.SongHUD [secs]` (intro + fake song, no BP calls).
 
 #pragma once
@@ -45,6 +48,7 @@ public:
 	void SetLayout(float T);      // 0 = big + centred, 1 = small in the corner
 	void SetBarAlpha(float A);    // 0 = bar row collapsed
 	void SetProgress(float Elapsed, float Duration);
+	void SetMask(float A);        // multiplies everything (jumpscare hide)
 
 protected:
 	virtual void NativeOnInitialized() override;
@@ -156,6 +160,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Song HUD|Timing", meta = (ClampMin = 0.01))
 	float BarFadeTime = 0.4f;
 
+	// a fail = jumpscare: HUD hides instantly, stays hidden until the next run starts, then fades back in over this many secs
+	UPROPERTY(EditAnywhere, Category = "Song HUD|Jumpscare", meta = (ClampMin = 0.01))
+	float ScareReturnTime = 0.6f;
+
 	// secs to fade everything out when the song is done
 	UPROPERTY(EditAnywhere, Category = "Song HUD|Timing", meta = (ClampMin = 0.01))
 	float OutroFade = 1.f;
@@ -190,6 +198,8 @@ private:
 
 	UPROPERTY() TArray<TObjectPtr<AActor>> Sources; // actors with MusicProperty (BP_Spline)
 	UPROPERTY() TObjectPtr<USongHUDWidget> Widget;
+	float Mask = 1.f;       // jumpscare hide (multiplies everything)
+	bool bScareHide = false; // failed run: hidden until the next run starts
 	TWeakObjectPtr<AActor> Source;
 	EPhase Phase = EPhase::Waiting;
 	float Clock = 0.f;     // secs in the current phase

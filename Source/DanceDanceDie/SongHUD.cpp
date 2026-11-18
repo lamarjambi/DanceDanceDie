@@ -127,6 +127,11 @@ void USongHUDWidget::SetBarAlpha(float A)
 	Time->SetRenderOpacity(FMath::Clamp(A, 0.f, 1.f));
 }
 
+void USongHUDWidget::SetMask(float A)
+{
+	WidgetTree->RootWidget->SetRenderOpacity(FMath::Clamp(A, 0.f, 1.f));
+}
+
 void USongHUDWidget::SetProgress(float Elapsed, float Duration)
 {
 	Bar->SetPercent(Duration > 0.f ? FMath::Clamp(Elapsed / Duration, 0.f, 1.f) : 0.f);
@@ -192,7 +197,7 @@ void ASongHUD::BeginPlay()
 	P.bShowTime = bShowTime;
 	Widget->Setup(P);
 	Widget->SetRenderOpacity(0.f);
-	Widget->AddToViewport(50); // under credits (1000)
+	Widget->AddToViewport(-1); // under every other widget (blackout, credits, ...)
 	UE_LOG(LogSongHUD, Log, TEXT("watching %d source(s)"), Sources.Num());
 }
 
@@ -278,6 +283,10 @@ void ASongHUD::Tick(float Dt)
 	if (bFailed || !Widget) { return; }
 	Clock += Dt;
 
+	// jumpscare = first layer: hidden from the fail until the next run, then fade back
+	Mask = bScareHide ? 0.f : FMath::Min(1.f, Mask + Dt / ScareReturnTime);
+	Widget->SetMask(Mask);
+
 	switch (Phase)
 	{
 	case EPhase::Waiting:
@@ -311,6 +320,7 @@ void ASongHUD::Tick(float Dt)
 			Phase = EPhase::Playing;
 			Clock = 0.f;
 			LastElapsed = E;
+			bScareHide = false; // next run started: fade back in
 			Widget->SetProgress(E, Duration);
 			UE_LOG(LogSongHUD, Log, TEXT("rhythm part %.1fs, %.1fs in (%s)"), Duration, E, bFake ? TEXT("fake") : SongLength > 0.f ? TEXT("SongLength") : TEXT("SongTimer"));
 		}
@@ -346,6 +356,9 @@ void ASongHUD::Tick(float Dt)
 			else // failed: BP restarts it. keep the title, wait for the next run
 			{
 				Phase = EPhase::Lead;
+				bScareHide = true;
+				Mask = 0.f;
+				Widget->SetMask(0.f);
 				Widget->SetProgress(0.f, Duration);
 				UE_LOG(LogSongHUD, Log, TEXT("stopped early at %.1fs (restart)"), Elapsed);
 			}
