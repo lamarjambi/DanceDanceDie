@@ -6,7 +6,9 @@
 
 ## Rendering conventions (Config/DefaultEngine.ini)
 - No Lumen (GI=0), no Virtual Shadow Maps, no Nanite, no mesh distance fields. AA = FXAA (cheap; reduces shimmer in the city).
-- 3D renders at `r.ScreenPercentage=60` with nearest-neighbor upscale (`r.Upscale.Quality=0`).
+- 3D render scale is ADAPTIVE (Source/DanceDanceDie/AdaptiveRes.*): `r.ScreenPercentage` = `ddd.RenderRows` (432) / viewport height,
+  re-checked 4x a second (resize, Alt+Enter). 1080p = 40%, 1440p = 30%, 720p = 60%. Nearest-neighbor upscale (`r.Upscale.Quality=0`).
+  The ini's `r.ScreenPercentage=50` is only the fallback (`ddd.RenderRows 0` = off). Don't hard-set r.ScreenPercentage elsewhere.
   UI (UMG/Slate) still draws at native resolution → stays sharp.
 - Don't change the window resolution for the retro look (breaks UI scale + loading screen). Use screen percentage.
 
@@ -20,6 +22,22 @@
 - EVERY SceneTexture in M_PS1Horror must take PixelUV2 as UV (Col AND Stencil). The CustomStencil node (arrows) had no UV →
   full-res mask vs 180-row colour → arrows drew twice (dim graded + bright boosted copy). Fixed by Scripts/fix_pp_stencil_uv.py.
   Inspect the graph: Scripts/dump_pp_graph.py → Saved/pp_graph.txt.
+
+## Performance (measured 2026-11-18, 1920x1080 standalone, this laptop)
+- The game is GPU-bound. Nothing sets `sg.*`, so every scalability group runs at Epic; the cheap overrides live in
+  `Config/DefaultEngine.ini` `[SystemSettings]` (shadow res/texel density, fog grid, AO, SSR, bloom, 50% screen, `t.MaxFPS=60`).
+  They keep every effect on. User rule: the picture must look identical, so check screenshots before changing any of them.
+- Measure: `Scripts/perf_capture.bat -Map <map> -Label <name> [-CVars "r.X=1,..."] [-Extra "-dx11"]` runs standalone, exits by itself,
+  writes `Saved/perf_<name>.txt` (fps, GPU ms per pass, light counts) + `Saved/perf_<name>.png`. `-CVars` = test overrides for that run only.
+  To test a fixed screen %, turn the adaptive scale off in the same run: `-CVars "ddd.RenderRows=0,r.ScreenPercentage=50"`.
+  Numbers drift ~15% between runs (heat), so compare runs done back to back.
+- Level audit without touching the open editor: `Scripts/dump_perf_cmd.bat` -> `Saved/perf_dump_<map>.txt` (light mobility/shadows, mesh counts).
+- City: ALL 146 point/spot lights + the directional light are MOVABLE with shadows (not baked). Cost = the lights near the camera
+  (screen area). Tested, no gain: dropping shadows on far lights, culling small far lights, 1 CSM cascade, hiding the far half. Don't redo those.
+- DX11 is much slower here than DX12 (26 vs 40 fps on the menu). Keep DX12.
+- Results at 1080p, uncapped (before -> fixed 50% -> adaptive 432 rows = 40%): city across the street 27-32 -> ~54 -> ~63,
+  club 31-35 -> ~63 -> ~78, menu (looks down the street, 116 lights) 23-28 -> ~41 -> ~50. Screenshots matched at every step.
+  The menu view is the worst case; more fps there means fewer shadowed lights near the camera (changes the look, ask first).
 
 ## Scripts
 - Editor Python lives in `Scripts/`. Run from the editor's Python box:
