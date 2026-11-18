@@ -1,168 +1,107 @@
 # AGENTS.md — DanceDanceDie (UE 5.4)
 
-## Target hardware
-- Dev machine = AMD Radeon integrated GPU (shared RAM, ~1 GB texture budget). Treat it as min spec.
-- Measure perf in **Standalone**, not PIE. `stat unit` → if GPU ms is highest, it's rendering.
+## Hard rules
+- NEVER commit (user rule). On a mounted/remote folder run no git command at all (even `git status` leaves `.git/index.lock`). Don't create `Saved/commit_msg.txt`.
+- Build with `Scripts/build_only.bat` (no git). `Scripts/run_build.py` starts it from the editor Python box, then closes the editor.
+  C++ header changes: `Scripts/rebuild.bat` (waits for editor close, builds, `git add`, commits only if `Saved/commit_msg.txt` exists, reopens). It runs git: not on a mounted folder.
+- Closing the editor pops up the Unreal Project Browser, which blocks the build (it waits for every UnrealEditor.exe). Computer-use clicks don't reach it: ask the user to press Cancel.
+- The picture must look identical after any perf/rendering change: compare screenshots first. Anything that changes the look: ask first.
+- Approved looks, don't re-tune unasked: `M_UI_PS1` `Gain` 1.35, credits colours.
 
-## Rendering conventions (Config/DefaultEngine.ini)
-- No Lumen (GI=0), no Virtual Shadow Maps, no Nanite, no mesh distance fields. AA = FXAA (cheap; reduces shimmer in the city).
-- 3D render scale is ADAPTIVE (Source/DanceDanceDie/AdaptiveRes.*): `r.ScreenPercentage` = `ddd.RenderRows` (432) / viewport height,
-  re-checked 4x a second (resize, Alt+Enter). 1080p = 40%, 1440p = 30%, 720p = 60%. Nearest-neighbor upscale (`r.Upscale.Quality=0`).
-  The ini's `r.ScreenPercentage=50` is only the fallback (`ddd.RenderRows 0` = off). Don't hard-set r.ScreenPercentage elsewhere.
-  UI (UMG/Slate) still draws at native resolution → stays sharp.
-- Don't change the window resolution for the retro look (breaks UI scale + loading screen). Use screen percentage.
+## Hardware + perf
+- Dev machine = AMD Radeon integrated GPU (~1 GB texture budget) = min spec. The game is GPU-bound. Measure in **Standalone**, not PIE.
+- `Scripts/perf_capture.bat -Map <map> -Label <name> [-CVars "r.X=1,..."] [-Extra "-dx11"]` → `Saved/perf_<name>.txt` + `.png`.
+  Fixed screen % test: `-CVars "ddd.RenderRows=0,r.ScreenPercentage=50"`. Runs drift ~15% (heat): compare back to back.
+- Level audit without the editor: `Scripts/dump_perf_cmd.bat` → `Saved/perf_dump_<map>.txt`.
+- Nothing sets `sg.*`; the cheap overrides are in `Config/DefaultEngine.ini` `[SystemSettings]` (`t.MaxFPS=60`). Keep DX12 (DX11: 26 vs 40 fps).
+- City: all 146 point/spot lights + the directional are movable with shadows. Cost = lights near the camera.
+  Tested, no gain, don't redo: no shadows on far lights, culling small far lights, 1 CSM cascade, hiding the far half.
+- 1080p uncapped: city ~63, club ~78, menu ~50 fps (worst case; more = fewer shadowed lights near the camera = changes the look).
 
-## Post process: /Game/PostProcess/M_PS1Horror
-- Pixelates to `rows=180` and grades the image. Any custom HLSL that samples SceneTexture must
-  convert viewport UV → buffer UV: `(vpUV*View.ViewSizeAndInvSize.xy+View.ViewRectMin.xy)*View.BufferSizeAndInvSize.zw`.
-  Otherwise screen % < 100 renders the image into a corner.
-- Keep rendered rows (screen height × screen %) ≥ 180.
-- PixelUV2 now returns `ViewportUVToSceneTextureUV(vp, 14)` (Scripts/fix_pp_viewportuv.py). The old View.* math zoomed the
-  image 1/0.6 from the top-left in PIE at 60%, so world and UI (e.g. NPC E prompt) didn't line up. Don't go back to View.* math.
-- EVERY SceneTexture in M_PS1Horror must take PixelUV2 as UV (Col AND Stencil). The CustomStencil node (arrows) had no UV →
-  full-res mask vs 180-row colour → arrows drew twice (dim graded + bright boosted copy). Fixed by Scripts/fix_pp_stencil_uv.py.
-  Inspect the graph: Scripts/dump_pp_graph.py → Saved/pp_graph.txt.
+## Rendering
+- No Lumen, Virtual Shadow Maps, Nanite or mesh distance fields. AA = FXAA.
+- Render scale is adaptive (`Source/DanceDanceDie/AdaptiveRes.*`): `r.ScreenPercentage` = `ddd.RenderRows` (432) / viewport height, nearest upscale.
+  Don't set `r.ScreenPercentage` anywhere else (the ini's 50 is only the fallback for `ddd.RenderRows 0`).
+- Retro look = screen %, never window resolution (breaks UI scale + loading screen).
+- Keep rendered rows ≥ ~2x the post process's 180 rows. Fewer = choppy blocks, worst in the city.
 
-## Performance (measured 2026-11-18, 1920x1080 standalone, this laptop)
-- The game is GPU-bound. Nothing sets `sg.*`, so every scalability group runs at Epic; the cheap overrides live in
-  `Config/DefaultEngine.ini` `[SystemSettings]` (shadow res/texel density, fog grid, AO, SSR, bloom, 50% screen, `t.MaxFPS=60`).
-  They keep every effect on. User rule: the picture must look identical, so check screenshots before changing any of them.
-- Measure: `Scripts/perf_capture.bat -Map <map> -Label <name> [-CVars "r.X=1,..."] [-Extra "-dx11"]` runs standalone, exits by itself,
-  writes `Saved/perf_<name>.txt` (fps, GPU ms per pass, light counts) + `Saved/perf_<name>.png`. `-CVars` = test overrides for that run only.
-  To test a fixed screen %, turn the adaptive scale off in the same run: `-CVars "ddd.RenderRows=0,r.ScreenPercentage=50"`.
-  Numbers drift ~15% between runs (heat), so compare runs done back to back.
-- Level audit without touching the open editor: `Scripts/dump_perf_cmd.bat` -> `Saved/perf_dump_<map>.txt` (light mobility/shadows, mesh counts).
-- City: ALL 146 point/spot lights + the directional light are MOVABLE with shadows (not baked). Cost = the lights near the camera
-  (screen area). Tested, no gain: dropping shadows on far lights, culling small far lights, 1 CSM cascade, hiding the far half. Don't redo those.
-- DX11 is much slower here than DX12 (26 vs 40 fps on the menu). Keep DX12.
-- Results at 1080p, uncapped (before -> fixed 50% -> adaptive 432 rows = 40%): city across the street 27-32 -> ~54 -> ~63,
-  club 31-35 -> ~63 -> ~78, menu (looks down the street, 116 lights) 23-28 -> ~41 -> ~50. Screenshots matched at every step.
-  The menu view is the worst case; more fps there means fewer shadowed lights near the camera (changes the look, ask first).
+## Post process `/Game/PostProcess/M_PS1Horror`
+- Pixelates to 180 rows + grades. EVERY SceneTexture (colour AND CustomStencil) must take `PixelUV2` as UV; it returns `ViewportUVToSceneTextureUV(vp, 14)`.
+  Never use View.* math (world and UI stop lining up below 100%) or leave a UV unplugged (arrows draw twice).
+- Graph dump: `Scripts/dump_pp_graph.py` → `Saved/pp_graph.txt`. Past fixes: `Scripts/fix_pp_*.py`.
 
 ## Scripts
-- Editor Python lives in `Scripts/`. Run from the editor's Python box:
-  `exec(open(unreal.Paths.project_dir()+'Scripts/<name>.py').read())`
-- Rendered rows should be ~2x the effect's 180 rows or more. Fewer (e.g. 25% → ~233 rows) = uneven, choppy blocks,
-  worst in the city (thin windows/signs/reflections). Club looks fine at any %.
+- Editor Python lives in `Scripts/`: `exec(open(unreal.Paths.project_dir()+'Scripts/<name>.py').read())`
+- `vp.py`: `vp(x,y,z,pitch,yaw)` moves the editor viewport, `vpget()` logs it. `dump_map.py` (set `MAP=` first) dumps a level's actors.
+- Standalone playtest log: `Saved/Logs/DanceDanceDie_2.log`.
 
-## Intro chat (Source/DanceDanceDie/IntroChat.*)
-- Messages are C++ constructor defaults; BP_IntroChatGameMode inherits them. Dump current BP values: `Scripts/dump_introchat.py` → Saved/introchat_dump.txt.
-- Photo message = `Photo` texture + empty Body. Shown in a fixed 320px-wide box (UImage desired-size override is ignored).
-- History is a UScrollBox (`Scroll`) — nothing is evicted. New msgs auto-follow unless the player scrolled up (>40px from end).
-  `TopSpacer` is resized each Step so short history hugs the bottom. Scroll input is polled in the game mode Tick
-  (wheel, Up/Down, W/S, PgUp/PgDn, dpad, left stick) since input mode is GameOnly.
-- After the last msg the chat stays in EndHold (all bubbles full bright) until Space → Skip() → FadeOut → NextLevel.
-  `EndHoldTime` = delay before the hint changes to "press space to continue". Space mid-animation still skips.
-- Widgets are found by name via WidgetTree->FindWidget so cpp-only changes work with Live Coding (Ctrl+Alt+F11). `Weight`/`LeaveAge` are dead (header untouched).
-- Chat photos live in /Game/UI/Images; run `Scripts/setup_chat_photos.py` after importing (160px, nearest, no mips, UI group).
-- Names use one `NameColor` (no per-sender rainbow); creepy msgs stay red.
-- NEVER commit (user rule). Agents working through a mounted/remote folder: don't run ANY git command there (even `git status` leaves .git/index.lock when deletes are blocked). Build with `Scripts/build_only.bat` (no git). Don't create Saved/commit_msg.txt.
-- C++ header changes: run `Scripts/rebuild.bat` (waits for editor close, builds, commits with Saved/commit_msg.txt, reopens).
-
-## NPC talk (Source/DanceDanceDie/NPCTalk.*)
-- One `NPC_<Name>_Talk` (ANPCTalker) per city NPC, placed/updated by `Scripts/setup_npc_talk.py` (edit LINES there, re-run).
-- E icon (`/Game/UI/Images/keyboard_e`) is screen-space, anchored to bone `HeadTop_End`. Mixamo bones import WITHOUT the
-  `mixamorig:` prefix (Head, Hips, HeadTop_End). Mixamo walks aren't in-place, so the body drifts from the actor origin: use bones, not actor location.
-- Lines go into WBP_Subtitle (first TextBlock). While an NPC line is up, other WBP_Subtitle instances (trigger text) are collapsed, then restored.
-
-## Rhythm: hold notes ("slides") — BP_Spline / BP_Note1
-- Note lane is random; timing comes from MetaSound `SCP Cue`. No per-note chart data yet.
-- Hold chance/length live on BP_Spline spawn: `RandomBoolWithWeight.Weight` (0.25) → `SelectFloat.A` (1.0 s) → BP_Note1 `HoldDuration` (Expose on Spawn). 0 = tap.
-- Press (TryHit) on a hold note → `StartHold` (IsHeld, timer HoldDuration → `HoldComplete` = Good Hit). IA_LaneX `Completed` → `ReleaseLane(X)` → `ReleaseHold`:
-  ≤0.15 s left = Good Hit, earlier = RegisterMiss. Destroyer ignores IsHeld notes.
-- Tail = `Tail` Plane + `M_HoldTail` (translucent unlit ribbon: params Color, Glow; made by `Scripts/setup_holdtail.py`). Drawn on Tick in the arrow's plane
-  (rot = MakeRotFromXZ(spline dir, Arrow up)); length = remaining hold s × SplineLength / TimeToComplete.
-- Hold visuals: tail + arrow are always the LANE colour (hard-coded MakeArray in BP_Note1 Tick, order Left/Down/Up/Right = MI_* Tint).
-  Holding = brighter: Glow 1.0 → 2.5 on both (arrow M_Icon Glow default is 1.0; tail matches Tint×Glow so they read as one piece).
-  StartHold stops the Timeline → head pins at the target, tail shrinks into it. Tail width 0.22 (MakeVector Y), pushed 4uu away from camera
-  so the masked arrow hides the join (translucent tail is depth-tested).
-
-- Note facing: BP_Spline SpawnActor(BP_Note1) Spawn Transform Rotation <- GetActorRotation(self). Notes used to spawn at world rot 0
-  while BP_Spline (DemoMap) is yaw -40 → moving arrows 40° off the Bullseye targets. Lane geometry dump: Scripts/dump_lanes.py → Saved/lanes_dump.txt.
-  Sizes: note Arrow scale 0.6, Bullseye 0.70875.
-
-## Editing Blueprints from text (T3D)
-- Graph copy/paste is plain text. `Scripts/clip_t3d.py` puts `Scripts/t3d/<file>` on the clipboard:
-  `py exec(open(unreal.Paths.project_dir()+'Scripts/clip_t3d.py').read()); clip('<file>')` → Ctrl+V in the graph → File ▸ Refresh All Nodes → Compile.
-- Whole-graph replace (Ctrl+A, Delete, paste) shows "Fix Self Context Function References" → keep **Do Nothing**.
-- ⚠ Deleting/re-pasting **Add Component** nodes (e.g. BP_Spline's two Add Audio Component) creates NEW blank templates → Sound=None → no music/cues.
-  After any paste, re-set them: music = `SCP-x5x` (Sound Wave), cue = `MSS_SCP-x5x` (MetaSound). Better: never delete those nodes.
-- Verify playtests from `Saved/Logs/DanceDanceDie_2.log` (standalone): expect `cue!!` lines.
+## Blueprints from text (T3D)
+- `py exec(open(unreal.Paths.project_dir()+'Scripts/clip_t3d.py').read()); clip('<file>')` puts `Scripts/t3d/<file>` on the clipboard
+  → Ctrl+V in the graph → File ▸ Refresh All Nodes → Compile.
+- Whole-graph replace asks "Fix Self Context Function References" → keep **Do Nothing**.
+- ⚠ Never delete/re-paste **Add Component** nodes (BP_Spline's two Add Audio Component): new blank templates = Sound None = no music/cues.
+  If it happens: music = `SCP-x5x` (Sound Wave), cue = `MSS_SCP-x5x` (MetaSound).
 - `Scripts/t3d/spline_backup.t3d` = BP_Spline Event Graph before hold notes.
 
-## Demo ending / cliffhanger (Source/DanceDanceDie/Cliffhanger.*)
-- All C++, no Blueprint wiring. `Cliffhanger` actor (ACliffhangerDirector) in DemoMap detects the win by watching the actors tagged
-  `PartyNPC` go from hidden to visible (BP_Spline does that). Keep that tag + "start hidden" or the ending never fires (it errors on screen).
-- Party: spawns one ANPCTalker per dancer at runtime; `ANPCTalker::LineProvider` (C++ delegate) feeds Lines[0..2] in order, whoever is asked.
-- Last line, or `IdleTimeout` (10 s) without an E press, starts the flicker (`FlickerTime`, `FlickerCount`): `FlickerStartSound` (suspension-sfx) plays,
-  every AudioComponent that was playing winds down (pitch + volume), the screen blacks out via manual camera fade with `FlickerTickSound` each time.
-  In the LAST blackout each dancer plays the idle from `IdleAnims` that matches its skeleton and turns to the camera (mesh right vector = facing).
-  No matching idle = on-screen error + frozen dance pose. Then lights back = stare for `StareHold` (optional `StareSound`), move input ignored, look still works.
-- Then hard cut (`OpenLevel`) to `/Game/UI/DemoEnd`, whose World Settings game mode is `/Game/UI/BP_DemoEndGameMode` (child of C++ `DemoEndGameMode`): black + "it's not over" (VT323) -> MainMenu.
-  End-screen text, font size, colour, delay and hold are that Blueprint's Class Defaults (Demo End category), no rebuild.
-  `DemoEnd` is in LoadingScreen `SkipMaps` (Config/DefaultGame.ini) so the cut has no loading screen.
-- Edit lines, timings and sounds on the `Cliffhanger` actor in DemoMap (Details panel, no rebuild). `Scripts/setup_cliffhanger.py` only seeds
-  them when it first creates the actor; re-running it refreshes `IdleAnims` (one idle per dancer skeleton, found by "idle" in the asset name
-  under /Game/Characters/NPC; skeletons without one get Bobby's idle retargeted via RTG_Bobby_to_<Name>) and DemoEnd's game mode.
-- Test without playing the song: PIE in DemoMap, console `ddd.FakeWin`. Log category `LogCliffhanger`.
-- `Scripts/run_build.py` = start build_only.bat from the editor Python box, then close the editor.
+## Rhythm (BP_Spline / BP_Note1)
+- Note lane is random; timing comes from MetaSound `SCP Cue` (log shows `cue!!`). No chart data yet.
+- StartSong starts the cue MetaSound ~3.6 s BEFORE the music (note lead-in).
+- Hold notes: BP_Spline spawn `RandomBoolWithWeight.Weight` (0.25) → `SelectFloat.A` (1.0 s) → BP_Note1 `HoldDuration` (0 = tap).
+  TryHit → `StartHold` (timer → `HoldComplete` = Good Hit). IA_LaneX `Completed` → `ReleaseLane(X)` → `ReleaseHold`: ≤0.15 s left = Good Hit, earlier = RegisterMiss.
+  Destroyer ignores IsHeld notes.
+- Tail = `Tail` plane + `M_HoldTail` (params Color, Glow; `Scripts/setup_holdtail.py`), drawn on Tick, length = remaining s × SplineLength / TimeToComplete,
+  pushed 4uu from the camera so the masked arrow hides the join. Tail + arrow = lane colour (MakeArray in BP_Note1 Tick, order Left/Down/Up/Right), Glow 1.0 → 2.5 while held.
+- Notes spawn with BP_Spline's actor rotation (DemoMap spline is yaw -40). Arrow scale 0.6, Bullseye 0.70875. Lane dump: `Scripts/dump_lanes.py` → `Saved/lanes_dump.txt`.
+- Unattended playtests fail ~2 s into the music (misses → Jumpscare → restart loop). Expected.
 
-## Main menu live background (Scripts/setup_menu_bg.py)
-- MainMenu streams `NightCityCreator` as an **Always Loaded** sublevel (keeps the city's baked lighting; copying actors would lose lightmaps).
-  Menu-only actors live in the persistent level, folder `MenuBG`: `Menu_Cam` (auto-activates for Player 0), `Menu_Seq` (`/Game/UI/MenuBG/LS_MenuBG`, loops, lamp flicker only).
-- No Michelle in the menu (user choice). Menu footsteps come from the city NPCs (see NPC footsteps).
-- Camera angle: pilot `Menu_Cam` in MainMenu (Outliner > right-click > Pilot, fly, Eject, save). The script keeps the camera where it is; `RESET_CAM=True` restores the default.
-- Loading screen now also shows at boot (LoadingScreen.cpp) so the menu's city never warms up in front of the player.
-- MainMenu game mode = `/Game/UI/BP_MainMenuGameMode` (no pawn). The default ThirdPerson mode would spawn a character at the origin = inside the city's `2Club` trigger.
-- Flicker = city lamp's movable `Point Light (1)` intensity + `EmissiveValue` on `StreetLight_LOD0` (bound across into the sublevel). Seeded random (`SEED`).
-- `Menu_Cam` copies the player camera's post process (M_PS1Horror etc.) + `EXPOSURE_EV` (+1). Re-run the script after changing the player camera PP.
-- Title = `T_MainMenuTitle` (keyed out of the old `T_MainMenuBG`, same 1195x622 frame so the widget layout is unchanged). Source PNG in `Scripts/assets/`.
-- `Scripts/vp.py`: `vp(x,y,z,pitch,yaw)` moves the editor viewport, `vpget()` logs it. `Scripts/dump_map.py` (set `MAP=` first) dumps a level's actors.
+## Song HUD (`SongHUD.*`, `Scripts/setup_song_hud.py`) — all C++
+- `SongHUD` actor in DemoMap reads BP_Spline `CueAudio` / `MusicAudio` by reflection. "Rhythm part started" = CueAudio playing.
+- Flow: cue starts → HUD calls `StopSong` → title card → `StartSong` → time + bar follow BP_Spline `SongTimer` (45 s), NOT the whole track.
+  ≥ 95% of the timer gone = complete. `bHoldSongForIntro` off = don't touch the song. `SongLength` > 0 = fixed length instead.
+- Fail/jumpscare: HUD hides on the early stop, comes back when the next SongTimer runs, no 2nd intro.
+  Don't key off BP_Jumpscare `ScareActive`/visibility (on for the whole rhythm part).
+- Tuning: SongHUD actor Details > Song HUD (no rebuild). Test: PIE console `ddd.SongHUD [secs]`.
 
-## NPC footsteps (Scripts/setup_npc_footsteps.py)
-- `PlaySound` notifies on a `Footsteps` notify track of each NPC walk anim (`<Name>_Anim_mixamo_com`), so they play wherever the walk plays (city + menu).
-- Sounds: `/Game/Characters/NPC/Walk/Footsteps/SW_ConcreteStep_01..06` (cut from the user's concrete-footsteps.wav; sources in `Scripts/assets/footsteps/`),
-  each NPC gets its own pair. 3D via `ATT_Footstep` (`INNER`/`FALLOFF` in the script).
-- Notify time = heel strike, computed from the foot bones (moment the foot stops sliding). New NPC → add it to `NPCS` and re-run.
+## Intro chat (`IntroChat.*`)
+- Messages are C++ constructor defaults, inherited by BP_IntroChatGameMode. Dump BP values: `Scripts/dump_introchat.py` → `Saved/introchat_dump.txt`.
+- Widgets are found by name (`WidgetTree->FindWidget`), so cpp-only changes work with Live Coding (Ctrl+Alt+F11). `Weight`/`LeaveAge` are dead.
+- Photo message = `Photo` texture + empty Body, fixed 320 px box. Photos live in /Game/UI/Images; run `Scripts/setup_chat_photos.py` after importing.
+- History = UScrollBox `Scroll`, auto-follows unless the player scrolled up. Scroll input is polled in the game mode Tick (input mode is GameOnly).
+- After the last message: EndHold until Space → Skip() → FadeOut → NextLevel.
+- One `NameColor` for every name; creepy messages stay red.
 
-## PS1 look on UI (Scripts/setup_ui_ps1.py)
-- `/Game/PostProcess/M_UI_PS1` = Retainer Box effect material: pixelate (`BlockPx`, ~screen height/180), 5-bit colour + ordered dither, RGB split, rare row glitch.
-- Used on WBP_MainMenu: `RetainerBox_0` wraps `Menu_VerticalBox` (PLAY/QUIT). Wrap any other widget the same way to get the look.
-- `Gain` 1.35: text comes out darker through the retainer otherwise. User is happy with the colour as is, don't re-tune unasked.
-- Script rebuilds the material in place. `delete_all_material_expressions` leaves orphan nodes in 5.4 (they broke the compile), so it also deletes them by name.
+## NPC talk (`NPCTalk.*`) + footsteps
+- One `NPC_<Name>_Talk` (ANPCTalker) per city NPC: edit `LINES` in `Scripts/setup_npc_talk.py`, re-run.
+- E icon is anchored to bone `HeadTop_End`. Mixamo bones have NO `mixamorig:` prefix, and the walks aren't in-place: use bones, not actor location.
+- Lines show in WBP_Subtitle (first TextBlock); other WBP_Subtitle instances are collapsed while a line is up.
+- Footsteps (`Scripts/setup_npc_footsteps.py`): PlaySound notifies on the `Footsteps` track of each `<Name>_Anim_mixamo_com`, timed at heel strike from the foot bones.
+  Sounds `SW_ConcreteStep_01..06` in /Game/Characters/NPC/Walk/Footsteps, attenuation `ATT_Footstep`. New NPC → add to `NPCS`, re-run.
 
-## Credits (Source/DanceDanceDie/Credits.*, Scripts/setup_credits.py)
-- `CreditsScene` (/Game/UI) game mode = `/Game/UI/BP_CreditsGameMode` (child of C++ `CreditsGameMode`). Built in code like DemoEnd, no WBP.
-- Lines, fonts, sizes, colours, speed, timings: BP_CreditsGameMode > Class Defaults > Credits (no rebuild). Line Style: Title / Heading / Name / Gap.
-  Last line stops centred (`bStopOnLastLine`), holds `EndHold`, fades, opens `NextLevel` (MainMenu).
-- Whole roll sits in a URetainerBox with `M_UI_PS1` (same look as PLAY/QUIT). Text under ~40 px gets eaten by the pixelation (headings = 44).
-- Input (polled in UCreditsWidget::NativeTick): Esc / Enter / click / pad B = fade out + go on. In PIE Esc stops play, so test skipping with Enter/click. Hold Space / Down / S / pad A = x`FastMultiplier`.
-- Menu: `Credits_Button` / `Credits_Text` in WBP_MainMenu (between PLAY and QUIT), same hover font swap; click = glitch sound, 0.8 s delay, OpenLevel CreditsScene.
-  Graph nodes came from `Scripts/t3d/credits_menu.t3d`.
-- `CreditsScene` is in LoadingScreen `SkipMaps`. setup_credits.py re-creates the BP if missing and re-sets the level's game mode.
-- Credits colours = exact PLAY/QUIT values (text 0.25,0.9,0.08; shadow 0.45,0.02,0.42; offset 5). User approved this look; don't re-tune unasked.
-  `Scripts/credits_match_menu.py` re-applies them to BP_CreditsGameMode (colours only, leaves the Lines alone).
-- Demo end: `Cliffhanger` actor (DemoMap) has `bRollCredits` (default on) + `CreditsFrom` (= BP_CreditsGameMode). After the stare it rolls the
-  credits as an overlay right in DemoMap (same widget, lines/look from CreditsFrom's Class Defaults = one list for menu + demo), then OpenLevel(EndLevel = DemoEnd).
-  Flow: stare -> credits (glitch out) -> "it's not over" (white, then red + glitch together) -> MainMenu. No extra level.
-  Demo-end credits are UNSKIPPABLE (FParams.bPlayerInput=false: no skip, no fast-forward). Menu credits keep skip + fast-forward.
-- PS1 block size is resolution-relative in the credits/DemoEnd: `FGlitchFX::FitBlocks` sets M_UI_PS1 `BlockPx` = screen px height / `PixelRows`
-  (270 = 4 px at 1080p). A fixed BlockPx made small text unreadable on small screens/windows. WBP_MainMenu still uses the fixed BlockPx 4.
-- Glitch burst = `GlitchFX.h` (FGlitchFX Start/Frame) on a URetainerBox with M_UI_PS1: spikes Glitch/Split/BlockPx/Dither params, jitter, dropped frames,
-  glitch-click at 0/40/75%. DemoEnd only puts the effect material on when the glitch starts, so the line is plain until then.
-- Rebuild gotcha: closing the editor (File > Exit or quit_editor) pops up the Unreal Project Browser, which blocks build_only.bat
-  (it waits for every UnrealEditor.exe). Computer-use clicks don't reach it: ask the user to press Cancel.
+## Demo ending (`Cliffhanger.*`) — all C++
+- `Cliffhanger` actor in DemoMap fires when the actors tagged `PartyNPC` go from hidden to visible (BP_Spline does that).
+  Keep the tag + "start hidden" or the ending never fires.
+- Flow: party lines (one ANPCTalker per dancer, fed by `LineProvider`) → last line or `IdleTimeout` → flicker → dancers idle + face the camera → stare
+  → credits overlay in DemoMap (`bRollCredits`, `CreditsFrom`, UNSKIPPABLE) → OpenLevel `/Game/UI/DemoEnd` ("it's not over") → MainMenu.
+- Lines, timings, sounds: Details panel on the actor (no rebuild). DemoEnd text/timing: `/Game/UI/BP_DemoEndGameMode` Class Defaults.
+- `Scripts/setup_cliffhanger.py` seeds values only when it first creates the actor; re-running refreshes `IdleAnims` (one idle per dancer skeleton,
+  missing = on-screen error) and DemoEnd's game mode.
+- Test: PIE in DemoMap, console `ddd.FakeWin`. Log `LogCliffhanger`.
 
-## Song title card + progress bar (Source/DanceDanceDie/SongHUD.*, Scripts/setup_song_hud.py)
-- All C++, no BP wiring. `SongHUD` actor in DemoMap (placed by setup_song_hud.py) reads BP_Spline vars by reflection: `CueAudio`, `MusicAudio`.
-- BP_Spline StartSong starts the cue MetaSound (spawns notes) ~3.6 s BEFORE the music (note lead-in). So "rhythm part started" = CueAudio playing.
-- Flow: cue starts -> SongHUD calls BP_Spline `StopSong` (no notes yet) -> big centred title (VT323, menu green/purple) `IntroHold`,
-  shrinks to `CornerAnchor`/`CornerOffset` over `MoveTime` -> calls `StartSong` again -> once BP_Spline `SongTimer` (the rhythm part, 45 s) runs, "m:ss / m:ss" (under the title) + bar fade in
-  and follow that timer, NOT the whole track (track is reused elsewhere). `SongLength` > 0 = fixed length from the music start instead.
-  Untick `bHoldSongForIntro` to not touch the song. Fail (BP StopSong -> Delay -> StartSong) = title stays in the corner, bar resets, no 2nd intro.
-  Stops with >= 95% of the timer gone (SongComplete) = done -> fade out.
-- Jumpscare = a fail (BP_Spline prints "Jumpscare" 1 frame before StopSong). HUD hides instantly on the early stop, stays hidden until
-  the next run's SongTimer runs, fades back over `ScareReturnTime`. Don't key off BP_Jumpscare `ScareActive`/visibility: on for the whole rhythm part.
-  HUD widget ZOrder -1 = under every other widget (Blackout etc.).
-- Title/sizes/colours/timings: SongHUD actor Details > Song HUD (no rebuild). Test visuals: PIE, console `ddd.SongHUD [secs]` (fake song, no BP calls).
-- Unattended playtests fail ~2 s into the music (missed notes -> Jumpscare -> RESTART loop). Expected, not a HUD bug.
+## Credits (`Credits.*`, `Scripts/setup_credits.py`)
+- `/Game/UI/CreditsScene`, game mode `BP_CreditsGameMode` (child of C++ `CreditsGameMode`), built in code, no WBP.
+  Lines, fonts, colours, timings: its Class Defaults > Credits (no rebuild). One list for menu + demo end.
+- The roll sits in a URetainerBox with `M_UI_PS1`: text under ~40 px gets eaten by the pixelation.
+- Menu credits: Esc / Enter / click / pad B = skip, hold Space / Down / S / pad A = fast. In PIE Esc stops play, so test skip with Enter/click.
+- Colours = exact PLAY/QUIT values; `Scripts/credits_match_menu.py` re-applies them (colours only).
+- `GlitchFX.h` (FGlitchFX): glitch burst on a retainer with `M_UI_PS1`; `FitBlocks` sets `BlockPx` = screen height / `PixelRows` (270). WBP_MainMenu keeps fixed BlockPx 4.
+- Menu button `Credits_Button` in WBP_MainMenu; its graph nodes came from `Scripts/t3d/credits_menu.t3d`.
+
+## Main menu + UI
+- Background (`Scripts/setup_menu_bg.py`): MainMenu streams `NightCityCreator` as an **Always Loaded** sublevel (keeps the baked lighting).
+  Menu-only actors: folder `MenuBG` (`Menu_Cam`, `Menu_Seq` = `/Game/UI/MenuBG/LS_MenuBG`, lamp flicker). No Michelle in the menu (user choice).
+- Game mode `/Game/UI/BP_MainMenuGameMode` (no pawn: a default pawn spawns at the origin = inside the city's `2Club` trigger).
+- Camera: pilot `Menu_Cam`, save; the script keeps it (`RESET_CAM=True` restores the default). `Menu_Cam` copies the player camera's post process
+  (+ `EXPOSURE_EV`): re-run the script after changing that.
+- PS1 look on UI (`Scripts/setup_ui_ps1.py`): `/Game/PostProcess/M_UI_PS1` as a Retainer Box effect material (WBP_MainMenu `RetainerBox_0`); wrap any widget the same way.
+  The script rebuilds the material in place and deletes orphan nodes by name (`delete_all_material_expressions` leaves them in 5.4).
+- Loading screen also shows at boot. `DemoEnd` and `CreditsScene` are in LoadingScreen `SkipMaps` (`Config/DefaultGame.ini`).
