@@ -4,8 +4,9 @@
 //   1. rhythm part starts (DemoMap trigger -> BP_Spline StartSong -> `CueAudio` plays) -> SongHUD calls BP_Spline StopSong
 //      right away (no notes yet), shows the big centred title for IntroHold secs, shrinks it into the corner over MoveTime,
 //      then calls StartSong again = the rhythm game starts after the title.
-//   2. music (`MusicAudio`, ~3.6 s after the cue = note lead-in) -> progress bar fades in and fills with song time.
-//   3. fail (too many misses -> BP restarts the song) -> title stays in the corner, bar resets. no second intro.
+//   2. BP_Spline `SongTimer` running (= the rhythm part, e.g. 45 s; ends with SongComplete) -> time ("0:12 / 0:45", under the
+//      title) + bar fade in and follow that timer. SongLength > 0 overrides: count from the music start instead.
+//   3. fail (jumpscare -> BP clears SongTimer, restarts) -> title + time + bar stay in the corner, reset to 0. no second intro.
 //      song done (stopped after 90%) -> everything fades out.
 // test without the song: PIE in DemoMap, console `ddd.SongHUD [secs]` (intro + fake song, no BP calls).
 
@@ -81,6 +82,14 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Song HUD|BP_Spline")
 	bool bHoldSongForIntro = true;
 
+	// BP_Spline FTimerHandle that ends the rhythm part (SongComplete). the time + bar show its length
+	UPROPERTY(EditAnywhere, Category = "Song HUD|BP_Spline")
+	FName SongTimerProperty = TEXT("SongTimer");
+
+	// secs. 0 = use SongTimer's length. > 0 = count this many secs from the music start instead
+	UPROPERTY(EditAnywhere, Category = "Song HUD|BP_Spline", meta = (ClampMin = 0))
+	float SongLength = 0.f;
+
 	UPROPERTY(EditAnywhere, Category = "Song HUD|BP_Spline", meta = (EditCondition = "bHoldSongForIntro"))
 	FName StopSongEvent = TEXT("StopSong");
 
@@ -97,7 +106,7 @@ public:
 	float SmallSize = 56.f;
 
 	UPROPERTY(EditAnywhere, Category = "Song HUD|Look", meta = (ClampMin = 1))
-	float TimeSize = 28.f;
+	float TimeSize = 32.f;
 
 	// same green / purple as PLAY/QUIT + credits
 	UPROPERTY(EditAnywhere, Category = "Song HUD|Look")
@@ -119,7 +128,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Song HUD|Look")
 	FVector2D BarSize = FVector2D(420.f, 12.f);
 
-	// "1:23 / 3:45" next to the bar
+	// "0:12 / 0:45" under the title
 	UPROPERTY(EditAnywhere, Category = "Song HUD|Look")
 	bool bShowTime = true;
 
@@ -165,8 +174,8 @@ private:
 	{
 		Waiting, // hidden, waiting for the rhythm part
 		Intro,   // big title -> corner. song stopped (bHoldSongForIntro)
-		Lead,    // title in the corner, waiting for the music (note lead-in / restart after a fail)
-		Playing, // bar filling
+		Lead,    // title in the corner, waiting for SongTimer (or the music if SongLength > 0); also after a fail
+		Playing, // time + bar running
 		Outro,   // song done, fading out
 		Done,
 	};
@@ -174,17 +183,20 @@ private:
 	void Fail(const FString& Why);
 	UAudioComponent* GetComp(AActor* Src, FName Prop) const;
 	AActor* FindStarted() const; // source whose cue or music is playing
+	const FTimerHandle* GetSongTimer() const; // null if SongLength > 0
+	bool GetTimerProgress(float& OutElapsed, float& OutDuration) const; // false = SongTimer not running
 	void CallEvent(AActor* Src, FName Event);
 	void BeginIntro(AActor* Src);
 
 	UPROPERTY() TArray<TObjectPtr<AActor>> Sources; // actors with MusicProperty (BP_Spline)
 	UPROPERTY() TObjectPtr<USongHUDWidget> Widget;
 	TWeakObjectPtr<AActor> Source;
-	TWeakObjectPtr<UAudioComponent> Playing;
 	EPhase Phase = EPhase::Waiting;
 	float Clock = 0.f;     // secs in the current phase
-	float Duration = 0.f;  // fake song length (real: Sound duration)
+	float Duration = 0.f;  // fake / SongLength mode
 	float OutroFrom = 1.f; // opacity when the outro began
 	bool bFake = false;
+	bool bBarShown = false;  // bar faded in once -> stays up through fails/restarts
+	float LastElapsed = 0.f; // SongTimer elapsed last frame (a fail clears the timer, so 'timer gone' != 'song done')
 	bool bFailed = false;
 };

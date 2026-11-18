@@ -139,8 +139,9 @@
 - All C++, no BP wiring. `SongHUD` actor in DemoMap (placed by setup_song_hud.py) reads BP_Spline vars by reflection: `CueAudio`, `MusicAudio`.
 - BP_Spline StartSong starts the cue MetaSound (spawns notes) ~3.6 s BEFORE the music (note lead-in). So "rhythm part started" = CueAudio playing.
 - Flow: cue starts -> SongHUD calls BP_Spline `StopSong` (no notes yet) -> big centred title (VT323, menu green/purple) `IntroHold`,
-  shrinks to `CornerAnchor`/`CornerOffset` over `MoveTime` -> calls `StartSong` again -> music starts -> bar + "m:ss / m:ss" fade in.
+  shrinks to `CornerAnchor`/`CornerOffset` over `MoveTime` -> calls `StartSong` again -> once BP_Spline `SongTimer` (the rhythm part, 45 s) runs, "m:ss / m:ss" (under the title) + bar fade in
+  and follow that timer, NOT the whole track (track is reused elsewhere). `SongLength` > 0 = fixed length from the music start instead.
   Untick `bHoldSongForIntro` to not touch the song. Fail (BP StopSong -> Delay -> StartSong) = title stays in the corner, bar resets, no 2nd intro.
-  Music stops after 90% = done -> fade out.
+  Stops with >= 95% of the timer gone (SongComplete) = done -> fade out.
 - Title/sizes/colours/timings: SongHUD actor Details > Song HUD (no rebuild). Test visuals: PIE, console `ddd.SongHUD [secs]` (fake song, no BP calls).
 - Unattended playtests fail ~2 s into the music (missed notes -> Jumpscare -> RESTART loop). Expected, not a HUD bug.

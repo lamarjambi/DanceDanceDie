@@ -18,6 +18,7 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Sound/SoundBase.h"
+#include "TimerManager.h"
 #include "Styling/CoreStyle.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -59,6 +60,9 @@ void USongHUDWidget::NativeOnInitialized()
 	Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
 	Box->AddChildToVerticalBox(Title);
 
+	Time = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Time"));
+	if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(Time)) { S->SetPadding(FMargin(4.f, 0.f, 0.f, 0.f)); }
+
 	BarRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("BarRow"));
 	if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(BarRow)) { S->SetPadding(FMargin(4.f, 6.f, 0.f, 0.f)); }
 
@@ -67,12 +71,6 @@ void USongHUDWidget::NativeOnInitialized()
 	Bar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("Bar"));
 	BarBox->AddChild(Bar);
 
-	Time = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Time"));
-	if (UHorizontalBoxSlot* S = BarRow->AddChildToHorizontalBox(Time))
-	{
-		S->SetVerticalAlignment(VAlign_Center);
-		S->SetPadding(FMargin(14.f, 0.f, 0.f, 0.f));
-	}
 }
 
 void USongHUDWidget::Setup(const FParams& P)
@@ -89,7 +87,6 @@ void USongHUDWidget::Setup(const FParams& P)
 	Time->SetColorAndOpacity(P.TextColor);
 	Time->SetShadowColorAndOpacity(P.ShadowColor);
 	Time->SetShadowOffset(P.ShadowOffset * 0.5f);
-	Time->SetVisibility(P.bShowTime ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
 	// flat blocks, no rounded engine brush: reads better through the PS1 post process
 	FProgressBarStyle Style = Bar->GetWidgetStyle();
@@ -123,8 +120,11 @@ void USongHUDWidget::SetLayout(float T)
 
 void USongHUDWidget::SetBarAlpha(float A)
 {
-	BarRow->SetVisibility(A <= 0.f ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+	const ESlateVisibility Vis = A <= 0.f ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible;
+	BarRow->SetVisibility(Vis);
 	BarRow->SetRenderOpacity(FMath::Clamp(A, 0.f, 1.f));
+	Time->SetVisibility(Params.bShowTime ? Vis : ESlateVisibility::Collapsed);
+	Time->SetRenderOpacity(FMath::Clamp(A, 0.f, 1.f));
 }
 
 void USongHUDWidget::SetProgress(float Elapsed, float Duration)
@@ -164,6 +164,14 @@ void ASongHUD::BeginPlay()
 		if (bHoldSongForIntro && (!It->FindFunction(StopSongEvent) || !It->FindFunction(StartSongEvent)))
 		{
 			Fail(FString::Printf(TEXT("%s has no '%s'/'%s' event (or untick Hold Song For Intro)"), *It->GetName(), *StopSongEvent.ToString(), *StartSongEvent.ToString()));
+		}
+		if (SongLength <= 0.f)
+		{
+			const FStructProperty* T = FindFProperty<FStructProperty>(C, SongTimerProperty);
+			if (!T || T->Struct != TBaseStructure<FTimerHandle>::Get())
+			{
+				Fail(FString::Printf(TEXT("%s has no FTimerHandle '%s' (or set Song Length)"), *It->GetName(), *SongTimerProperty.ToString()));
+			}
 		}
 		Sources.Add(*It);
 	}
@@ -212,6 +220,26 @@ AActor* ASongHUD::FindStarted() const
 	return nullptr;
 }
 
+const FTimerHandle* ASongHUD::GetSongTimer() const
+{
+	AActor* Src = Source.Get();
+	if (SongLength > 0.f || !IsValid(Src)) { return nullptr; }
+	const FStructProperty* P = FindFProperty<FStructProperty>(Src->GetClass(), SongTimerProperty);
+	check(P); // checked in BeginPlay
+	return P->ContainerPtrToValuePtr<FTimerHandle>(Src);
+}
+
+bool ASongHUD::GetTimerProgress(float& OutElapsed, float& OutDuration) const
+{
+	const FTimerHandle* H = GetSongTimer();
+	if (!H) { return false; }
+	const FTimerManager& TM = GetWorldTimerManager();
+	if (!TM.IsTimerActive(*H)) { return false; }
+	OutDuration = TM.GetTimerRate(*H);
+	OutElapsed = TM.GetTimerElapsed(*H);
+	return OutDuration > 0.f;
+}
+
 void ASongHUD::CallEvent(AActor* Src, FName Event)
 {
 	UFunction* F = IsValid(Src) ? Src->FindFunction(Event) : nullptr;
@@ -225,6 +253,9 @@ void ASongHUD::BeginIntro(AActor* Src)
 {
 	Source = Src;
 	Phase = EPhase::Intro;
+	bBarShown = false;
+	LastElapsed = 0.f;
+	if (!bFake) { Duration = 0.f; }
 	Clock = 0.f;
 	Widget->SetRenderOpacity(0.f);
 	Widget->SetLayout(0.f);
@@ -238,7 +269,6 @@ void ASongHUD::FakeStart(float Secs)
 	if (!Widget) { Fail(TEXT("ddd.SongHUD: HUD not set up (see earlier error)")); return; }
 	bFake = true;
 	Duration = FMath::Max(Secs, 1.f);
-	Playing = nullptr;
 	BeginIntro(nullptr);
 }
 
@@ -267,51 +297,65 @@ void ASongHUD::Tick(float Dt)
 		}
 		break;
 
-	case EPhase::Lead: // corner title, bar waits for the music
+	case EPhase::Lead: // corner title, waits for SongTimer (or the music in SongLength mode)
 	{
 		Widget->SetRenderOpacity(1.f);
-		Widget->SetBarAlpha(0.f);
-		UAudioComponent* M = bFake ? nullptr : GetComp(Source.Get(), MusicProperty);
-		if (bFake || M)
+		Widget->SetBarAlpha(bBarShown ? 1.f : 0.f); // after a fail: stays up at 0:00
+		float E = 0.f, D = 0.f;
+		const bool bReal = !bFake && GetComp(Source.Get(), CueProperty); // cue playing = this StartSong's run, not a stale timer
+		bool bGo = bFake;
+		if (bReal && SongLength > 0.f) { bGo = GetComp(Source.Get(), MusicProperty) != nullptr; Duration = SongLength; }
+		else if (bReal && GetTimerProgress(E, D)) { bGo = true; Duration = D; }
+		if (bGo)
 		{
-			if (M)
-			{
-				Duration = M->Sound ? M->Sound->GetDuration() : 0.f;
-				if (Duration <= 0.f || Duration >= INDEFINITELY_LOOPING_DURATION) { Fail(FString::Printf(TEXT("music '%s' has no usable duration"), *GetNameSafe(M->Sound))); return; }
-			}
-			Playing = M;
 			Phase = EPhase::Playing;
 			Clock = 0.f;
-			Widget->SetProgress(0.f, Duration);
-			UE_LOG(LogSongHUD, Log, TEXT("music %.1fs"), Duration);
+			LastElapsed = E;
+			Widget->SetProgress(E, Duration);
+			UE_LOG(LogSongHUD, Log, TEXT("rhythm part %.1fs, %.1fs in (%s)"), Duration, E, bFake ? TEXT("fake") : SongLength > 0.f ? TEXT("SongLength") : TEXT("SongTimer"));
 		}
 		break;
 	}
 
 	case EPhase::Playing:
 	{
-		const bool bStopped = bFake ? Clock >= Duration : !(Playing.IsValid() && Playing->IsPlaying());
+		float Elapsed = Clock, D = Duration;
+		bool bStopped;
+		if (bFake || SongLength > 0.f)
+		{
+			bStopped = bFake ? Clock >= Duration : !(GetComp(Source.Get(), MusicProperty) || GetComp(Source.Get(), CueProperty));
+			bStopped = bStopped || Clock >= Duration;
+		}
+		else
+		{
+			const bool bTimer = GetTimerProgress(Elapsed, D);
+			const bool bSong = GetComp(Source.Get(), CueProperty) || GetComp(Source.Get(), MusicProperty);
+			bStopped = !bTimer || !bSong;
+			if (bTimer) { Duration = D; LastElapsed = Elapsed; }
+			else { Elapsed = LastElapsed + Dt; } // fired (near the end) or cleared by a fail (anywhere)
+		}
 		if (bStopped)
 		{
-			if (Clock >= Duration * 0.9f) // done (win / cliffhanger wind-down)
+			if (Elapsed >= Duration * 0.95f) // done (SongComplete / cliffhanger)
 			{
+				Widget->SetProgress(Duration, Duration);
 				Phase = EPhase::Outro;
 				OutroFrom = Widget->GetRenderOpacity();
-				UE_LOG(LogSongHUD, Log, TEXT("song done"));
+				UE_LOG(LogSongHUD, Log, TEXT("rhythm part done"));
 			}
-			else // failed: BP restarts it. keep the title, wait for the music again
+			else // failed: BP restarts it. keep the title, wait for the next run
 			{
 				Phase = EPhase::Lead;
 				Widget->SetProgress(0.f, Duration);
-				UE_LOG(LogSongHUD, Log, TEXT("music stopped early (restart)"));
+				UE_LOG(LogSongHUD, Log, TEXT("stopped early at %.1fs (restart)"), Elapsed);
 			}
 			Clock = 0.f;
-			Playing = nullptr;
 			bFake = false;
 			break;
 		}
-		Widget->SetBarAlpha(Clock / BarFadeTime);
-		Widget->SetProgress(Clock, Duration);
+		if (Clock >= BarFadeTime) { bBarShown = true; }
+		Widget->SetBarAlpha(bBarShown ? 1.f : Clock / BarFadeTime);
+		Widget->SetProgress(Elapsed, Duration);
 		break;
 	}
 
