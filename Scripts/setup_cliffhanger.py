@@ -11,6 +11,7 @@ END_GM = '/Game/UI/BP_DemoEndGameMode'  # blueprint child of DemoEndGameMode: en
 NPC_DIR = '/Game/Characters/NPC'
 RTG_DIR = NPC_DIR + '/Dance/Retarget'
 IDLE_SOURCE = 'Bobby'  # retarget source for skeletons without an idle (needs RTG_Bobby_to_<Name>)
+CLUB_IDLES = ['new-bobby-idle']  # wins when a skeleton has more than one idle (Bobby: idle-bobby is the city one). from Scripts/setup_party.py
 
 ELS = unreal.EditorLoadingAndSavingUtils
 EAL = unreal.EditorAssetLibrary
@@ -49,7 +50,9 @@ def idle_assets():
         if str(ad.asset_class_path.asset_name) != 'AnimSequence' or 'idle' not in str(ad.asset_name).lower():
             continue
         tag = str(ad.get_tag_value('Skeleton') or '')
-        out[tag.split("'")[1] if "'" in tag else tag] = ad
+        skel = tag.split("'")[1] if "'" in tag else tag
+        if skel not in out or str(ad.asset_name) in CLUB_IDLES:
+            out[skel] = ad
     return out
 
 meshes = {}  # skeleton path -> (mesh asset, character name)

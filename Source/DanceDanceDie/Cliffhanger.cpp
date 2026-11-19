@@ -9,6 +9,7 @@
 #include "Components/AudioComponent.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/Image.h"
 #include "Components/RetainerBox.h"
 #include "Materials/MaterialInterface.h"
@@ -17,6 +18,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
@@ -39,6 +41,60 @@ static FAutoConsoleCommandWithWorld GFakeWin(
 		for (AActor* A : Found) { A->SetActorHiddenInGame(false); }
 		UE_LOG(LogCliffhanger, Warning, TEXT("ddd.FakeWin: unhid %d actors"), Found.Num());
 	}));
+
+// ---------------------------------------------------------------- solid dancers
+// the level keeps the dancers' collision off: they are hidden, not gone, until the win, and would be invisible walls.
+// from the party on each one gets an upright capsule that only blocks pawns. it rides the Hips bone, so it stays under
+// the body while it dances (the dances travel up to ~1.5 m from the actor).
+
+static const FName GBodyName(TEXT("PartyBody"));
+static const FName GHipsBone(TEXT("Hips"));
+static const float GBodyRadius = 32.f;
+static const float GBodyHalfHeight = 88.f;
+
+static void AddDancerBody(AActor* Dancer)
+{
+	USkeletalMeshComponent* Mesh = Dancer->FindComponentByClass<USkeletalMeshComponent>();
+	if (!Mesh) { return; }
+
+	UCapsuleComponent* Body = NewObject<UCapsuleComponent>(Dancer, GBodyName);
+	Body->InitCapsuleSize(GBodyRadius, GBodyHalfHeight);
+	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision); // SolidifyDancers turns it on
+	Body->SetCollisionObjectType(ECC_WorldDynamic);
+	Body->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Body->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	Body->SetGenerateOverlapEvents(false);
+	Body->CanCharacterStepUpOn = ECB_No;
+	Body->SetUsingAbsoluteRotation(true); // stays upright whatever the hips do
+	Body->SetUsingAbsoluteScale(true);
+	if (Mesh->GetBoneIndex(GHipsBone) != INDEX_NONE)
+	{
+		Body->SetupAttachment(Mesh, GHipsBone);
+	}
+	else
+	{
+		UE_LOG(LogCliffhanger, Warning, TEXT("Cliffhanger: %s has no %s bone, its body stays at the actor origin"), *Dancer->GetActorNameOrLabel(), *GHipsBone.ToString());
+		Body->SetupAttachment(Mesh);
+		Body->SetRelativeLocation(FVector(0.f, 0.f, GBodyHalfHeight));
+	}
+	Dancer->AddInstanceComponent(Body);
+	Body->RegisterComponent();
+	Dancer->SetActorEnableCollision(true); // off in the level. the mesh itself stays NoCollision.
+}
+
+// a body turns solid once the player is not standing inside it (the dancers appear wherever they were placed)
+static void SolidifyDancers(const TArray<TObjectPtr<AActor>>& Dancers, const APawn* Player)
+{
+	for (AActor* D : Dancers)
+	{
+		UCapsuleComponent* Body = D ? D->FindComponentByClass<UCapsuleComponent>() : nullptr;
+		if (!Body || Body->GetFName() != GBodyName || Body->GetCollisionEnabled() != ECollisionEnabled::NoCollision) { continue; }
+		const float Clear = GBodyRadius + (Player ? Player->GetSimpleCollisionRadius() : 0.f) + 5.f;
+		if (Player && FVector::DistSquared2D(Player->GetActorLocation(), Body->GetComponentLocation()) < Clear * Clear) { continue; }
+		Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		UE_LOG(LogCliffhanger, Log, TEXT("Cliffhanger: %s is solid"), *D->GetActorNameOrLabel());
+	}
+}
 
 // ---------------------------------------------------------------- director
 
@@ -98,6 +154,7 @@ void ACliffhangerDirector::Tick(float Dt)
 		break;
 	}
 	case EPhase::Party:
+		SolidifyDancers(Dancers, UGameplayStatics::GetPlayerPawn(this, 0));
 		if (bStareQueued || Clock >= IdleTimeout) { StartFlicker(); }
 		break;
 
@@ -167,6 +224,7 @@ void ACliffhangerDirector::StartParty()
 		T->LineProvider.BindUObject(this, &ACliffhangerDirector::NextLine);
 		UGameplayStatics::FinishSpawningActor(T, D->GetActorTransform());
 		Talkers.Add(T);
+		AddDancerBody(D);
 	}
 }
 

@@ -5,6 +5,9 @@
 - Build with `Scripts/build_only.bat` (no git). `Scripts/run_build.py` starts it from the editor Python box, then closes the editor.
   C++ header changes: `Scripts/rebuild.bat` (waits for editor close, builds, `git add`, commits only if `Saved/commit_msg.txt` exists, reopens). It runs git: not on a mounted folder.
 - Closing the editor pops up the Unreal Project Browser, which blocks the build (it waits for every UnrealEditor.exe). Computer-use clicks don't reach it: ask the user to press Cancel.
+  No browser when everything is saved and the editor is closed with PowerShell `(Get-Process -Id <pid>).CloseMainWindow()`; then run `Scripts\build_only.bat`.
+- Computer use: the editor's app name is `UnrealEditor.exe`. `type` pastes the clipboard, and a crashed headless UE run leaves its callstack there:
+  `Set-Clipboard` the command, then ctrl+v in the Cmd box.
 - The picture must look identical after any perf/rendering change: compare screenshots first. Anything that changes the look: ask first.
 - Approved looks, don't re-tune unasked: `M_UI_PS1` `Gain` 1.35, credits colours.
 
@@ -108,6 +111,16 @@
 - `Scripts/setup_cliffhanger.py` seeds values only when it first creates the actor; re-running refreshes `IdleAnims` (one idle per dancer skeleton,
   missing = on-screen error) and DemoEnd's game mode.
 - Test: PIE in DemoMap, console `ddd.FakeWin`. Log `LogCliffhanger`.
+
+## Club dancers (`Scripts/setup_party.py`)
+- 15 `Party_<Name>_<n>` SkeletalMeshActors in DemoMap (folder `PartyNPCs`, tag `PartyNPC`, hidden, collision OFF). 8 hand-placed + `EXTRA` in the script
+  (label, character, dance, x, y, yaw): edit it, re-run in the editor. Not headless: `duplicate_actor` and `duplicate_and_retarget` crash in a commandlet.
+- Collision stays off in the level (hidden dancers = invisible walls). `Cliffhanger.cpp` gives each one a pawn-only capsule `PartyBody` on the `Hips` bone
+  when the party starts; it turns solid once the player is not standing inside it.
+- Bobby's club idle = `new-bobby-idle` (Cliffhanger Idle Anims; `CLUB_IDLES` in `setup_cliffhanger.py` keeps it). The city keeps `idle-bobby` (`LS_Walk_Bobby`).
+- `duplicate_and_retarget` drops its copies in `/Game/`: the script moves them to NPC/Dance.
+- Room = x -870..2330, y -1340..660, floor z 20. Dancer z is hand-tuned per character (Bobby 32, Jackie ~37, Jolleen ~28, Dameon 19, Hal 30).
+- Test: `Scripts/party_test.ps1 -Label x` (Standalone: fake win, walks into a dancer, stare idles, fps) → `Saved/party_test.txt` + `Saved/party_<x>_*.png`.
 
 ## Credits (`Credits.*`, `Scripts/setup_credits.py`)
 - `/Game/UI/CreditsScene`, game mode `BP_CreditsGameMode` (child of C++ `CreditsGameMode`), built in code, no WBP.
