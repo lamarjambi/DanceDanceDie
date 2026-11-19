@@ -8,6 +8,10 @@
 - The picture must look identical after any perf/rendering change: compare screenshots first. Anything that changes the look: ask first.
 - Approved looks, don't re-tune unasked: `M_UI_PS1` `Gain` 1.35, credits colours.
 
+## Design
+- GDD (source of truth for story, songs, scope): https://docs.google.com/document/d/1tTtxZwsyKF8KON_052Dtuo76aP4wTwPmAEXqh4nasIY
+  Read it before design-facing work (dialogue, credits, level flow, new mechanics). Public page: https://playlamar.dev/games/dance-dance-die
+
 ## Hardware + perf
 - Dev machine = AMD Radeon integrated GPU (~1 GB texture budget) = min spec. The game is GPU-bound. Measure in **Standalone**, not PIE.
 - `Scripts/perf_capture.bat -Map <map> -Label <name> [-CVars "r.X=1,..."] [-Extra "-dx11"]` → `Saved/perf_<name>.txt` + `.png`.
