@@ -12,10 +12,23 @@
 - Dev machine = AMD Radeon integrated GPU (~1 GB texture budget) = min spec. The game is GPU-bound. Measure in **Standalone**, not PIE.
 - `Scripts/perf_capture.bat -Map <map> -Label <name> [-CVars "r.X=1,..."] [-Extra "-dx11"]` → `Saved/perf_<name>.txt` + `.png`.
   Fixed screen % test: `-CVars "ddd.RenderRows=0,r.ScreenPercentage=50"`. Runs drift ~15% (heat): compare back to back.
+  Capture at a spot: `-Extra '-ExecCmds="DisableAllScreenMessages,BugItGo x y z pitch yaw roll"'` (club door `700 0 142 0 140 0`,
+  street toward the bar `800 -1500 142 0 90 0`). `-ShotAt` must land before the run ends (load ~23 s) or there is no png.
+  One capture at a time: a stopped background batch can keep launching runs. Minimise the editor (open behind the game = -20% fps)
+  and close Chrome (a playing tab took 19% of the GPU: walking test 51 -> 31 fps). Check `\GPU Engine(*)` counters before measuring.
+  Walking test (spawn -> club door and back, fps while moving): add `py <full path>/Scripts/perf_walk.py` to the ExecCmds, then
+  `python Scripts/perf_walk_report.py . <label>`. `$env:DDD_NOSHADOW` (`all`, `imax4`, `zmin600`, `a+b`) drops Cast Shadows on a
+  light group for that run only; `$env:DDD_STAND="x,y,yaw"` stands still for look shots.
 - Level audit without the editor: `Scripts/dump_perf_cmd.bat` → `Saved/perf_dump_<map>.txt`.
 - Nothing sets `sg.*`; the cheap overrides are in `Config/DefaultEngine.ini` `[SystemSettings]` (`t.MaxFPS=60`). Keep DX12 (DX11: 26 vs 40 fps).
 - City: all 146 point/spot lights + the directional are movable with shadows. Cost = lights near the camera.
-  Tested, no gain, don't redo: no shadows on far lights, culling small far lights, 1 CSM cascade, hiding the far half.
+  Fps follows the lights on screen: spawn 27 (~63 fps), club door 51 (~49), street toward the bar 94, 74 shadowed (~46).
+  Shadows = 1/3 of the frame at the door (all shadows off: 47 -> 70 fps).
+  Tested, no gain, don't redo: no shadows on far lights, culling small far lights, 1 CSM cascade, hiding the far half,
+  `r.Shadow.WholeSceneShadowCacheMb` 100 (shadow maps are already cached).
+  Failed the look check: `ddd.RenderRows=360` (+15% fps, but pixels change everywhere and more lights drop their shadows).
+  Walking, idle laptop: 57 fps now, 64 without shadows on the 65 dim lights (intensity < 4; small light leaks on walls, not applied,
+  user decides), 70 with no shadows at all. Lights above z 600: no gain.
 - 1080p uncapped: city ~63, club ~78, menu ~50 fps (worst case; more = fewer shadowed lights near the camera = changes the look).
 
 ## Rendering
