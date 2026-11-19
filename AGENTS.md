@@ -37,6 +37,11 @@
   Don't set `r.ScreenPercentage` anywhere else (the ini's 50 is only the fallback for `ddd.RenderRows 0`).
 - Retro look = screen %, never window resolution (breaks UI scale + loading screen).
 - Keep rendered rows ≥ ~2x the post process's 180 rows. Fewer = choppy blocks, worst in the city.
+- Near clip = 2 cm (`[/Script/Engine.Engine] NearClipPlane`, read at startup; live: `r.SetNearClipPlane 2`). At the default 10 the camera
+  cuts the player's own chest open when looking straight down (hollow body). Normal view is unchanged.
+- Player = `BP_ThirdPersonCharacter` (Michelle): `CameraBoom` (arm length 0) on mesh socket `Head` + 15, `Head` bone hidden at BeginPlay.
+  Dump: `Scripts/dump_player.py` (headless) → `Saved/player_dump.txt`. Look-down shots in Standalone:
+  `Scripts/look_test.ps1 -Label x [-At "x,y,yaw"] [-Walk] [-Steps "label:pitch:fwd:up:nearclip;..."]` → `Saved/look_<label>_<step>.png`.
 
 ## Post process `/Game/PostProcess/M_PS1Horror`
 - Pixelates to 180 rows + grades. EVERY SceneTexture (colour AND CustomStencil) must take `PixelUV2` as UV; it returns `ViewportUVToSceneTextureUV(vp, 14)`.
