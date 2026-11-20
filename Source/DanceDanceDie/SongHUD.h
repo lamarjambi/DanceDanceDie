@@ -8,8 +8,8 @@
 //      title) + bar fade in and follow that timer. SongLength > 0 overrides: count from the music start instead.
 //   3. fail (jumpscare -> BP clears SongTimer, restarts) -> title + time + bar stay in the corner, reset to 0. no second intro.
 //      song done -> everything fades out.
-//   jumpscare = the fail (BP_Spline prints Jumpscare 1 frame before StopSong) -> HUD hidden instantly until the next run starts,
-//      then fades back over ScareReturnTime. (BP_Jumpscare's ScareActive/visibility is useless: on for the whole rhythm part.)
+//   jumpscare = the fail (BP_Spline prints Jumpscare 1 frame before StopSong) -> HUD hidden instantly until BP_Spline restarts
+//      the song 3.5 s later (cue plays again; NOT SongTimer, that starts ~3.7 s after the restart), then fades back over ScareReturnTime. (BP_Jumpscare's ScareActive/visibility is useless: on for the whole rhythm part.)
 //   HUD is under every other widget (ZOrder -1).
 // test without the song: PIE in DemoMap, console `ddd.SongHUD [secs]` (intro + fake song, no BP calls).
 
@@ -160,7 +160,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Song HUD|Timing", meta = (ClampMin = 0.01))
 	float BarFadeTime = 0.4f;
 
-	// a fail = jumpscare: HUD hides instantly, stays hidden until the next run starts, then fades back in over this many secs
+	// a fail = jumpscare: HUD hides instantly, stays hidden until the song restarts, then fades back in over this many secs
 	UPROPERTY(EditAnywhere, Category = "Song HUD|Jumpscare", meta = (ClampMin = 0.01))
 	float ScareReturnTime = 0.6f;
 
@@ -199,7 +199,8 @@ private:
 	UPROPERTY() TArray<TObjectPtr<AActor>> Sources; // actors with MusicProperty (BP_Spline)
 	UPROPERTY() TObjectPtr<USongHUDWidget> Widget;
 	float Mask = 1.f;       // jumpscare hide (multiplies everything)
-	bool bScareHide = false; // failed run: hidden until the next run starts
+	bool bScareHide = false; // failed run: hidden until BP_Spline restarts the song (jumpscare over)
+	bool bCueGap = false;    // saw the cue stopped since the fail -> cue playing again = the restart
 	TWeakObjectPtr<AActor> Source;
 	EPhase Phase = EPhase::Waiting;
 	float Clock = 0.f;     // secs in the current phase

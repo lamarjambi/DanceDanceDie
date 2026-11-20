@@ -70,7 +70,9 @@
 
 ## Rhythm (BP_Spline / BP_Note1)
 - Note lane is random; timing comes from MetaSound `SCP Cue` (log shows `cue!!`). No chart data yet.
-- StartSong starts the cue MetaSound ~3.6 s BEFORE the music (note lead-in).
+- StartSong starts the cue MetaSound ~3.75 s BEFORE the music (note lead-in): a `Delay` node → music + `SongTimer`.
+  StopSong does NOT cancel that Delay, and a pending Delay ignores the next StartSong. SongHUD cancels it after its own StopSong
+  (`RemoveActionsForObject`, log `cancelled 1 pending delay(s)`); without that the first try's music starts 2.7 s early.
 - Hold notes: BP_Spline spawn `RandomBoolWithWeight.Weight` (0.25) → `SelectFloat.A` (1.0 s) → BP_Note1 `HoldDuration` (0 = tap).
   TryHit → `StartHold` (timer → `HoldComplete` = Good Hit). IA_LaneX `Completed` → `ReleaseLane(X)` → `ReleaseHold`: ≤0.15 s left = Good Hit, earlier = RegisterMiss.
   Destroyer ignores IsHeld notes.
@@ -83,7 +85,8 @@
 - `SongHUD` actor in DemoMap reads BP_Spline `CueAudio` / `MusicAudio` by reflection. "Rhythm part started" = CueAudio playing.
 - Flow: cue starts → HUD calls `StopSong` → title card → `StartSong` → time + bar follow BP_Spline `SongTimer` (45 s), NOT the whole track.
   ≥ 95% of the timer gone = complete. `bHoldSongForIntro` off = don't touch the song. `SongLength` > 0 = fixed length instead.
-- Fail/jumpscare: HUD hides on the early stop, comes back when the next SongTimer runs, no 2nd intro.
+- Fail/jumpscare: HUD hides on the early stop, comes back at 0:00 when BP_Spline restarts (cue plays again, 3.5 s later), no 2nd intro.
+  Don't wait for SongTimer to bring it back: it only starts ~3.7 s after the restart (title gone while notes are already coming).
   Don't key off BP_Jumpscare `ScareActive`/visibility (on for the whole rhythm part).
 - Tuning: SongHUD actor Details > Song HUD (no rebuild). Test: PIE console `ddd.SongHUD [secs]`.
 

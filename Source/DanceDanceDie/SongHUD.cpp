@@ -14,6 +14,8 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
+#include "Engine/LatentActionManager.h"
+#include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
@@ -265,7 +267,15 @@ void ASongHUD::BeginIntro(AActor* Src)
 	Widget->SetRenderOpacity(0.f);
 	Widget->SetLayout(0.f);
 	Widget->SetBarAlpha(0.f);
-	if (Src && bHoldSongForIntro) { CallEvent(Src, StopSongEvent); } // before the first note spawns
+	if (Src && bHoldSongForIntro)
+	{
+		CallEvent(Src, StopSongEvent); // before the first note spawns
+		// StopSong leaves StartSong's Delay (-> music + SongTimer) pending. Still pending when we call StartSong after the title,
+		// it swallows that call's Delay: first try = music ~1 s after the cue instead of ~3.75 s, notes 2.7 s late. Cancel it.
+		FLatentActionManager& Latent = GetWorld()->GetLatentActionManager();
+		UE_LOG(LogSongHUD, Log, TEXT("cancelled %d pending delay(s) on %s"), Latent.GetNumActionsForObject(Src), *Src->GetName());
+		Latent.RemoveActionsForObject(Src);
+	}
 	UE_LOG(LogSongHUD, Log, TEXT("intro '%s'%s"), *SongTitle, bFake ? TEXT(" (fake)") : TEXT(""));
 }
 
@@ -312,6 +322,15 @@ void ASongHUD::Tick(float Dt)
 		Widget->SetBarAlpha(bBarShown ? 1.f : 0.f); // after a fail: stays up at 0:00
 		float E = 0.f, D = 0.f;
 		const bool bReal = !bFake && GetComp(Source.Get(), CueProperty); // cue playing = this StartSong's run, not a stale timer
+		if (bScareHide) // failed run: back when BP_Spline restarts (cue plays again). SongTimer only starts ~3.7 s after that
+		{
+			if (!bReal) { bCueGap = true; } // StopSong landed (the cue outlives the fail by a frame)
+			else if (bCueGap)
+			{
+				bScareHide = false;
+				UE_LOG(LogSongHUD, Log, TEXT("restart: HUD back"));
+			}
+		}
 		bool bGo = bFake;
 		if (bReal && SongLength > 0.f) { bGo = GetComp(Source.Get(), MusicProperty) != nullptr; Duration = SongLength; }
 		else if (bReal && GetTimerProgress(E, D)) { bGo = true; Duration = D; }
@@ -357,6 +376,7 @@ void ASongHUD::Tick(float Dt)
 			{
 				Phase = EPhase::Lead;
 				bScareHide = true;
+				bCueGap = false;
 				Mask = 0.f;
 				Widget->SetMask(0.f);
 				Widget->SetProgress(0.f, Duration);
