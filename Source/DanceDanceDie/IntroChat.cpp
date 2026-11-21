@@ -244,12 +244,15 @@ void UIntroChatWidget::PushWidget(UWidget* W, bool bCreepy, bool bSystem, int32 
 	Bub.Weight = Weight;
 	Bubbles.Add(Bub);
 
-	// follow new messages unless the player scrolled up to reread
+}
+
+void UIntroChatWidget::ScrollBy(float Delta)
+{
 	UScrollBox* Scroll = IntroChat::GetScroll(this);
-	if (Scroll->GetScrollOffset() >= Scroll->GetScrollOffsetOfEnd() - IntroChat::FollowSlack)
-	{
-		Scroll->ScrollToEnd();
-	}
+	const float End = Scroll->GetScrollOffsetOfEnd();
+	const float Offset = FMath::Clamp(Scroll->GetScrollOffset() + Delta, 0.f, End);
+	Scroll->SetScrollOffset(Offset);
+	bFollow = Offset >= End - IntroChat::FollowSlack; // back at the bottom = follow new msgs again
 }
 
 void UIntroChatWidget::ShowTyping(const FString& Sender)
@@ -458,6 +461,10 @@ void UIntroChatWidget::Step(float Dt)
 	case EPhase::Done:
 		break;
 	}
+
+	// stick to the newest message unless the player scrolled up to reread. Every frame, not once per message:
+	// a wrapped bubble only gets its 2nd line a frame after it is added, so a one-off ScrollToEnd left it cut off.
+	if (bFollow) { IntroChat::GetScroll(this)->ScrollToEnd(); }
 }
 
 // ---------------------------------------------------------------- game mode
@@ -516,7 +523,7 @@ AIntroChatGameMode::AIntroChatGameMode()
 
 	// profile photos
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> MichelleMesh(TEXT("/Game/Characters/Michelle/michelle.michelle"));
-	static ConstructorHelpers::FObjectFinder<UAnimationAsset> MichelleIdle(TEXT("/Game/Mixamo/A_Idle.A_Idle"));
+	static ConstructorHelpers::FObjectFinder<UAnimationAsset> MichelleIdle(TEXT("/Game/Characters/Michelle/new-michelle-idle.new-michelle-idle")); // same idle as BS_IdleWalk
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> AbeMesh(TEXT("/Game/Characters/Abe/abe-walking.abe-walking"));
 	static ConstructorHelpers::FObjectFinder<UAnimationAsset> AbeIdle(TEXT("/Game/Characters/Abe/abe-idle.abe-idle"));
 	auto AddChar = [this](EPlayerCharacter C, USkeletalMesh* Mesh, UAnimationAsset* Idle, float CamHeight, float CamDistance)
@@ -533,6 +540,9 @@ AIntroChatGameMode::AIntroChatGameMode()
 	AddChar(EPlayerCharacter::Abe, AbeMesh.Object, AbeIdle.Object, 132.f, 190.f);
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> PhotoMat(TEXT("/Game/UI/M_UI_ProfilePhoto.M_UI_ProfilePhoto"));
 	PhotoMaterial = PhotoMat.Object;
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Ps1(TEXT("/Game/PostProcess/M_UI_PS1.M_UI_PS1"));
+	JoinGlitchEffect = Ps1.Object;
+	JoinGlitchSound = Glitch.Object; // glitch-click, same as the "it's not over" glitch
 }
 
 namespace IntroChat
@@ -646,10 +656,7 @@ void AIntroChatGameMode::Tick(float DeltaSeconds)
 		if (PC->IsInputKeyDown(EKeys::Down) || PC->IsInputKeyDown(EKeys::S) || PC->IsInputKeyDown(EKeys::Gamepad_DPad_Down)) { Axis += 1.f; }
 		Axis -= PC->GetInputAnalogKeyState(EKeys::Gamepad_LeftY); // stick up = positive
 		Delta += FMath::Clamp(Axis, -1.f, 1.f) * IntroChat::ScrollSpeed * DeltaSeconds;
-		if (Delta != 0.f)
-		{
-			Scroll->SetScrollOffset(FMath::Clamp(Scroll->GetScrollOffset() + Delta, 0.f, Scroll->GetScrollOffsetOfEnd()));
-		}
+		if (Delta != 0.f) { Chat->ScrollBy(Delta); }
 	}
 
 	Chat->Step(DeltaSeconds);

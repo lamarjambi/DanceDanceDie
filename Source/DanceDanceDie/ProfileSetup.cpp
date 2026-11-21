@@ -33,7 +33,6 @@ DEFINE_LOG_CATEGORY_STATIC(LogProfileSetup, Log, All);
 namespace ProfileSetup
 {
 	constexpr float FadeInTime = 0.8f;
-	constexpr float JoinFadeTime = 0.45f;
 	constexpr float PhotoW = 260.f;
 	constexpr float PhotoH = 325.f;
 	constexpr int32 RtW = 320;
@@ -92,6 +91,11 @@ void UProfileSetupWidget::NativeOnInitialized()
 	Font = GM->ChatFont.Get();
 	JoinSound = GM->PingSound;
 	PhotoMaterial = GM->PhotoMaterial;
+	GlitchEffect = GM->JoinGlitchEffect;
+	GlitchSound = GM->JoinGlitchSound;
+	GlitchTime = FMath::Max(GM->JoinGlitchTime, 0.05f);
+	JoinRed = GM->JoinRedColor;
+	if (!GlitchEffect) { UE_LOG(LogProfileSetup, Error, TEXT("ProfileSetup: Join Glitch Effect (M_UI_PS1) not set, join glitch will be jitter only")); }
 	checkf(Characters.Num() >= 1 && Characters.Num() <= 2, TEXT("ProfileSetup: 1 or 2 Characters (got %d)"), Characters.Num());
 
 	UCanvasPanel* Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("ProfileRoot"));
@@ -102,9 +106,16 @@ void UProfileSetupWidget::NativeOnInitialized()
 	Back->SetColorAndOpacity(FLinearColor(0.006f, 0.006f, 0.01f, 1.f));
 	Fill(Root->AddChildToCanvas(Back));
 
+	// everything the join glitch tears up sits in a retainer. Retaining is off until then: drawn directly, no effect, same look as before
+	Retainer = WidgetTree->ConstructWidget<URetainerBox>(URetainerBox::StaticClass(), TEXT("ProfileRetainer"));
+	Retainer->SetRetainRendering(false);
+	Fill(Root->AddChildToCanvas(Retainer));
+	UCanvasPanel* Stage = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("ProfileStage"));
+	Retainer->AddChild(Stage);
+
 	UVerticalBox* Col = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ProfileColumn"));
 	{
-		UCanvasPanelSlot* S = Root->AddChildToCanvas(Col);
+		UCanvasPanelSlot* S = Stage->AddChildToCanvas(Col);
 		S->SetAnchors(FAnchors(0.5f, 0.5f));
 		S->SetAlignment(FVector2D(0.5f, 0.5f));
 		S->SetAutoSize(true);
@@ -194,7 +205,7 @@ void UProfileSetupWidget::NativeOnInitialized()
 	UButton* JoinBtn = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ProfileJoin"));
 	JoinBtn->SetStyle(ProfileSetup::ClearButton());
 	JoinBtn->OnClicked.AddDynamic(this, &UProfileSetupWidget::OnJoinClicked);
-	UBorder* JoinFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ProfileJoinFrame"));
+	JoinFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ProfileJoinFrame"));
 	JoinFrame->SetBrush(ProfileSetup::Rounded(FLinearColor(1.f, 1.f, 1.f, 0.9f), FLinearColor::White, 1.f, 20.f));
 	JoinFrame->SetPadding(FMargin(34.f, 6.f, 34.f, 8.f));
 	UTextBlock* JoinText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
@@ -210,7 +221,7 @@ void UProfileSetupWidget::NativeOnInitialized()
 	Hint->SetFont(MakeFont(18));
 	Hint->SetColorAndOpacity(FSlateColor(FLinearColor(1.f, 1.f, 1.f, 0.25f)));
 	{
-		UCanvasPanelSlot* S = Root->AddChildToCanvas(Hint);
+		UCanvasPanelSlot* S = Stage->AddChildToCanvas(Hint);
 		S->SetAnchors(FAnchors(1.f, 1.f));
 		S->SetAlignment(FVector2D(1.f, 1.f));
 		S->SetAutoSize(true);
@@ -376,6 +387,11 @@ void UProfileSetupWidget::Join()
 	if (JoinSound) { UGameplayStatics::PlaySound2D(this, JoinSound); }
 	bJoining = true;
 	JoinTime = 0.f;
+
+	// red and glitch hit together, like the "it's not over" screen
+	JoinFrame->SetBrush(ProfileSetup::Rounded(JoinRed, JoinRed, 1.f, 20.f));
+	Retainer->SetRetainRendering(true);
+	Glitch.Start(Retainer, GlitchEffect, GlitchSound);
 }
 
 FReply UProfileSetupWidget::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent)
@@ -402,13 +418,17 @@ FReply UProfileSetupWidget::NativeOnPreviewKeyDown(const FGeometry& Geometry, co
 void UProfileSetupWidget::Step(float Dt)
 {
 	Time += Dt;
-	if (!bJoining)
+	if (bDone) { return; }
+	FadeOverlay->SetRenderOpacity(1.f - FMath::Clamp(Time / ProfileSetup::FadeInTime, 0.f, 1.f)); // fade-in keeps going under an early join
+	if (!bJoining) { return; }
+	JoinTime += Dt;
+	if (JoinTime >= GlitchTime)
 	{
-		FadeOverlay->SetRenderOpacity(1.f - FMath::Clamp(Time / ProfileSetup::FadeInTime, 0.f, 1.f));
+		// hard cut to black; the chat fades in from there
+		Retainer->SetRenderOpacity(0.f);
+		FadeOverlay->SetRenderOpacity(1.f);
+		bDone = true;
 		return;
 	}
-	JoinTime += Dt;
-	const float A = FMath::Clamp(JoinTime / ProfileSetup::JoinFadeTime, 0.f, 1.f);
-	FadeOverlay->SetRenderOpacity(FMath::Max(A, FadeOverlay->GetRenderOpacity()));
-	if (A >= 1.f) { bDone = true; }
+	Glitch.Frame(Retainer, JoinTime / GlitchTime, GlitchSound);
 }

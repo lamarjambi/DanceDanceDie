@@ -7,6 +7,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "PlayerProfile.h"
+#include "GlitchFX.h"
 #include "ProfileSetup.generated.h"
 
 class UBorder;
@@ -54,6 +55,11 @@ public:
 	TObjectPtr<USoundBase> JoinSound;
 	TObjectPtr<USoundBase> PickSound;
 	TObjectPtr<class UMaterialInterface> PhotoMaterial;
+	// join = button goes red + glitch burst (same as the "it's not over" screen), then a hard cut to the chat
+	TObjectPtr<class UMaterialInterface> GlitchEffect;
+	TObjectPtr<USoundBase> GlitchSound;
+	float GlitchTime = 0.7f;
+	FLinearColor JoinRed = FLinearColor(1.f, 0.03f, 0.03f);
 
 	void Step(float Dt);
 	bool IsDone() const { return bDone; }
@@ -79,6 +85,8 @@ private:
 
 	UPROPERTY() TObjectPtr<UEditableText> NameBox;
 	UPROPERTY() TObjectPtr<UImage> FadeOverlay;
+	UPROPERTY() TObjectPtr<URetainerBox> Retainer; // everything but the backdrop; only retains during the join glitch
+	UPROPERTY() TObjectPtr<UBorder> JoinFrame;
 	UPROPERTY() TArray<TObjectPtr<UBorder>> Frames;
 	UPROPERTY() TArray<TObjectPtr<UTextBlock>> Labels;
 	UPROPERTY() TArray<TObjectPtr<UImage>> Photos;
@@ -91,4 +99,5 @@ private:
 	bool bDone = false;
 	float Time = 0.f;
 	float JoinTime = 0.f;
+	FGlitchFX Glitch;
 };

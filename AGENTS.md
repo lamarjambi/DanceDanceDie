@@ -10,6 +10,8 @@
   `Set-Clipboard` the command, then ctrl+v in the Cmd box.
 - The picture must look identical after any perf/rendering change: compare screenshots first. Anything that changes the look: ask first.
 - Approved looks, don't re-tune unasked: `M_UI_PS1` `Gain` 1.35, credits colours.
+- User preference: change what already exists (Blueprint graphs, asset properties, Details panel values) before writing new code.
+  A new C++ class or a kept script only when the editor route can't do it: say why first.
 
 ## Design
 - GDD (source of truth for story, songs, scope): https://docs.google.com/document/d/1tTtxZwsyKF8KON_052Dtuo76aP4wTwPmAEXqh4nasIY
@@ -57,6 +59,8 @@
 
 ## Scripts
 - Editor Python lives in `Scripts/`: `exec(open(unreal.Paths.project_dir()+'Scripts/<name>.py').read())`
+- `Scripts/` = only what gets re-run (setups, tests, build). A one-off (single edit, quick dump, check of today's change) runs from a
+  temp folder outside the project (`py exec(open('<full path>').read())`) and leaves no file behind.
 - `vp.py`: `vp(x,y,z,pitch,yaw)` moves the editor viewport, `vpget()` logs it. `dump_map.py` (set `MAP=` first) dumps a level's actors.
 - Standalone playtest log: `Saved/Logs/DanceDanceDie_2.log`.
 
@@ -95,6 +99,7 @@
 - Widgets are found by name (`WidgetTree->FindWidget`), so cpp-only changes work with Live Coding (Ctrl+Alt+F11). `Weight`/`LeaveAge` are dead.
 - Photo message = `Photo` texture + empty Body, fixed 320 px box. Photos live in /Game/UI/Images; run `Scripts/setup_chat_photos.py` after importing.
 - History = UScrollBox `Scroll`, auto-follows unless the player scrolled up. Scroll input is polled in the game mode Tick (input mode is GameOnly).
+  Follow = `ScrollToEnd` every frame (`bFollow`), not once per message: wrapped text gets its 2nd line a frame late, so a one-off left the newest bubble cut off.
 - After the last message: EndHold until Space → Skip() → FadeOut → NextLevel.
 - One `NameColor` for every name; creepy messages stay red.
 

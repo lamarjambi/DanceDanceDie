@@ -70,6 +70,8 @@ public:
 	// driven by the game mode tick
 	void Step(float Dt);
 	void Skip();
+	// player scroll (px, + = down); scrolling up stops following new messages
+	void ScrollBy(float Delta);
 	bool IsDone() const { return Phase == EPhase::Done; }
 
 protected:
@@ -116,6 +118,7 @@ private:
 	float TotalTime = 0.f;
 	int32 Index = 0;
 	bool bPlayedCreepy = false;
+	bool bFollow = true; // history stays scrolled to the newest message
 };
 
 UCLASS()
@@ -186,6 +189,21 @@ public:
 	// opaque UI material with a "Photo" texture param (Scripts/setup_profile_photo.py): captures have alpha 0
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile")
 	TObjectPtr<UMaterialInterface> PhotoMaterial;
+
+	// JOIN CHAT: the button turns this colour and the whole profile screen glitches for JoinGlitchTime, then the chat starts
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Join Glitch")
+	FLinearColor JoinRedColor = FLinearColor(1.f, 0.03f, 0.03f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Join Glitch", meta = (ClampMin = 0.05))
+	float JoinGlitchTime = 0.7f;
+
+	// fires 3x during the glitch (start, 40%, 75%). Empty = silent glitch
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Join Glitch")
+	TObjectPtr<USoundBase> JoinGlitchSound;
+
+	// M_UI_PS1, only switched on for the glitch
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Join Glitch")
+	TObjectPtr<UMaterialInterface> JoinGlitchEffect;
 
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
