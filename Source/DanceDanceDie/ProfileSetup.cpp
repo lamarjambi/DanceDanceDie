@@ -95,6 +95,8 @@ void UProfileSetupWidget::NativeOnInitialized()
 	GlitchSound = GM->JoinGlitchSound;
 	GlitchTime = FMath::Max(GM->JoinGlitchTime, 0.05f);
 	JoinRed = GM->JoinRedColor;
+	HoverColor = GM->ProfileHoverColor;
+	AccentColor = GM->ProfileAccentColor;
 	if (!GlitchEffect) { UE_LOG(LogProfileSetup, Error, TEXT("ProfileSetup: Join Glitch Effect (M_UI_PS1) not set, join glitch will be jitter only")); }
 	checkf(Characters.Num() >= 1 && Characters.Num() <= 2, TEXT("ProfileSetup: 1 or 2 Characters (got %d)"), Characters.Num());
 
@@ -146,6 +148,7 @@ void UProfileSetupWidget::NativeOnInitialized()
 	{
 		UButton* Btn = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
 		Btn->SetStyle(ProfileSetup::ClearButton());
+		Btn->SetCursor(EMouseCursor::Hand);
 		if (i == 0) { Btn->OnClicked.AddDynamic(this, &UProfileSetupWidget::OnPick0); }
 		else        { Btn->OnClicked.AddDynamic(this, &UProfileSetupWidget::OnPick1); }
 
@@ -171,6 +174,9 @@ void UProfileSetupWidget::NativeOnInitialized()
 		UHorizontalBoxSlot* HS = Row->AddChildToHorizontalBox(Btn);
 		HS->SetPadding(FMargin(i == 0 ? 0.f : 22.f, 0.f, i == 0 ? 22.f : 0.f, 0.f));
 
+		Tile->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+		PhotoBtns.Add(Btn);
+		PhotoHover.Add(0.f);
 		Frames.Add(Frame);
 		Labels.Add(Label);
 		Photos.Add(Photo);
@@ -192,6 +198,7 @@ void UProfileSetupWidget::NativeOnInitialized()
 		FEditableTextStyle Style = FCoreStyle::Get().GetWidgetStyle<FEditableTextStyle>("NormalEditableText");
 		Style.SetFont(MakeFont(34));
 		Style.SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		Style.BackgroundImageSelected.TintColor = FSlateColor(AccentColor); // selected text: game pink instead of Windows blue
 		NameBox->SetWidgetStyle(Style);
 	}
 	NameBox->SetHintText(FText::FromString(TEXT("your name")));
@@ -202,12 +209,14 @@ void UProfileSetupWidget::NativeOnInitialized()
 	AddCentered(NameFrame, 26.f);
 
 	// join
-	UButton* JoinBtn = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ProfileJoin"));
+	JoinBtn = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ProfileJoin"));
 	JoinBtn->SetStyle(ProfileSetup::ClearButton());
+	JoinBtn->SetCursor(EMouseCursor::Hand);
 	JoinBtn->OnClicked.AddDynamic(this, &UProfileSetupWidget::OnJoinClicked);
 	JoinFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ProfileJoinFrame"));
 	JoinFrame->SetBrush(ProfileSetup::Rounded(FLinearColor(1.f, 1.f, 1.f, 0.9f), FLinearColor::White, 1.f, 20.f));
 	JoinFrame->SetPadding(FMargin(34.f, 6.f, 34.f, 8.f));
+	JoinFrame->SetRenderTransformPivot(FVector2D(0.5f, 0.5f)); // the pill grows, the button's hit area doesn't (no hover flicker at the edge)
 	UTextBlock* JoinText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	JoinText->SetText(FText::FromString(TEXT("JOIN CHAT")));
 	JoinText->SetFont(MakeFont(30));
@@ -335,13 +344,7 @@ void UProfileSetupWidget::Pick(int32 Index)
 	const bool bChanged = Index != Selected;
 	Selected = Index;
 	UE_LOG(LogProfileSetup, Log, TEXT("pick %d"), Index);
-	for (int32 i = 0; i < Frames.Num(); ++i)
-	{
-		const bool bOn = i == Selected;
-		Frames[i]->SetBrush(ProfileSetup::Rounded(ProfileSetup::Dark, FLinearColor(1.f, 1.f, 1.f, bOn ? 0.95f : 0.08f), bOn ? 3.f : 1.f, 18.f));
-		Photos[i]->SetColorAndOpacity(bOn ? FLinearColor::White : FLinearColor(0.35f, 0.35f, 0.38f, 1.f));
-		Labels[i]->SetColorAndOpacity(FSlateColor(bOn ? FLinearColor::White : ProfileSetup::Grey));
-	}
+	for (int32 i = 0; i < Frames.Num(); ++i) { StylePhoto(i); }
 	// an untouched name follows the photo (Michelle -> Abe); a typed one stays
 	if (!bTyped && NameBox)
 	{
@@ -351,6 +354,25 @@ void UProfileSetupWidget::Pick(int32 Index)
 	}
 	if (bChanged && PickSound) { UGameplayStatics::PlaySound2D(this, PickSound); }
 	FocusName();
+}
+
+void UProfileSetupWidget::StylePhoto(int32 i)
+{
+	const bool bOn = i == Selected;
+	const float H = bOn ? 0.f : PhotoHover[i]; // hover only lights up the photo you'd switch to
+	const FLinearColor Outline = FMath::Lerp(FLinearColor(1.f, 1.f, 1.f, bOn ? 0.95f : 0.08f), AccentColor, H);
+	Frames[i]->SetBrush(ProfileSetup::Rounded(ProfileSetup::Dark, Outline, (bOn ? 3.f : 1.f) + 2.f * H, 18.f));
+	Photos[i]->SetColorAndOpacity(bOn ? FLinearColor::White : FMath::Lerp(FLinearColor(0.35f, 0.35f, 0.38f, 1.f), FLinearColor(0.75f, 0.75f, 0.78f, 1.f), H));
+	Labels[i]->SetColorAndOpacity(FSlateColor(bOn ? FLinearColor::White : FMath::Lerp(ProfileSetup::Grey, FLinearColor::White, H)));
+	PhotoBtns[i]->GetContent()->SetRenderScale(FVector2D(1.f + 0.03f * H));
+}
+
+void UProfileSetupWidget::StyleJoin()
+{
+	const FLinearColor Fill = FMath::Lerp(FLinearColor(1.f, 1.f, 1.f, 0.9f), HoverColor, JoinHover);
+	const FLinearColor Line = FMath::Lerp(FLinearColor::White, AccentColor, JoinHover);
+	JoinFrame->SetBrush(ProfileSetup::Rounded(Fill, Line, 1.f + 2.f * JoinHover, 20.f));
+	JoinFrame->SetRenderScale(FVector2D(1.f + 0.1f * JoinHover - (bJoinDown ? 0.05f : 0.f)));
 }
 
 void UProfileSetupWidget::OnPick0() { Pick(0); }
@@ -420,7 +442,19 @@ void UProfileSetupWidget::Step(float Dt)
 	Time += Dt;
 	if (bDone) { return; }
 	FadeOverlay->SetRenderOpacity(1.f - FMath::Clamp(Time / ProfileSetup::FadeInTime, 0.f, 1.f)); // fade-in keeps going under an early join
-	if (!bJoining) { return; }
+	if (!bJoining)
+	{
+		// mouse hover, eased; restyle only while something moves
+		const float J = FMath::FInterpTo(JoinHover, JoinBtn->IsHovered() ? 1.f : 0.f, Dt, 16.f);
+		const bool bDown = JoinBtn->IsPressed();
+		if (J != JoinHover || bDown != bJoinDown) { JoinHover = J; bJoinDown = bDown; StyleJoin(); }
+		for (int32 i = 0; i < PhotoBtns.Num(); ++i)
+		{
+			const float P = FMath::FInterpTo(PhotoHover[i], PhotoBtns[i]->IsHovered() ? 1.f : 0.f, Dt, 16.f);
+			if (P != PhotoHover[i]) { PhotoHover[i] = P; StylePhoto(i); }
+		}
+		return;
+	}
 	JoinTime += Dt;
 	if (JoinTime >= GlitchTime)
 	{

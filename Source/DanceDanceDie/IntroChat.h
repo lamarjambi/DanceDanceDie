@@ -190,6 +190,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile")
 	TObjectPtr<UMaterialInterface> PhotoMaterial;
 
+	// mouse over JOIN CHAT: the pill fills with this (menu lime) and grows
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Hover")
+	FLinearColor ProfileHoverColor = FLinearColor(0.25f, 0.9f, 0.08f);
+
+	// outline of the hovered button / photo + selected-text highlight (menu magenta)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Hover")
+	FLinearColor ProfileAccentColor = FLinearColor(0.45f, 0.02f, 0.42f);
+
 	// JOIN CHAT: the button turns this colour and the whole profile screen glitches for JoinGlitchTime, then the chat starts
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Join Glitch")
 	FLinearColor JoinRedColor = FLinearColor(1.f, 0.03f, 0.03f);

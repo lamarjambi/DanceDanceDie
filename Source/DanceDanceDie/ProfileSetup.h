@@ -60,6 +60,9 @@ public:
 	TObjectPtr<USoundBase> GlitchSound;
 	float GlitchTime = 0.7f;
 	FLinearColor JoinRed = FLinearColor(1.f, 0.03f, 0.03f);
+	// mouse hover: JOIN CHAT fills with HoverColor and grows, outlines (button + the photo you'd switch to) go AccentColor
+	FLinearColor HoverColor = FLinearColor(0.25f, 0.9f, 0.08f);
+	FLinearColor AccentColor = FLinearColor(0.45f, 0.02f, 0.42f);
 
 	void Step(float Dt);
 	bool IsDone() const { return bDone; }
@@ -81,12 +84,16 @@ private:
 	void Pick(int32 Index);
 	void Join();
 	void SpawnPhotos();
+	void StylePhoto(int32 Index); // frame, tint, label + hover scale of one photo tile
+	void StyleJoin();             // JOIN CHAT pill from JoinHover / pressed
 	FSlateFontInfo MakeFont(int32 Size) const;
 
 	UPROPERTY() TObjectPtr<UEditableText> NameBox;
 	UPROPERTY() TObjectPtr<UImage> FadeOverlay;
 	UPROPERTY() TObjectPtr<URetainerBox> Retainer; // everything but the backdrop; only retains during the join glitch
 	UPROPERTY() TObjectPtr<UBorder> JoinFrame;
+	UPROPERTY() TObjectPtr<class UButton> JoinBtn;
+	UPROPERTY() TArray<TObjectPtr<class UButton>> PhotoBtns;
 	UPROPERTY() TArray<TObjectPtr<UBorder>> Frames;
 	UPROPERTY() TArray<TObjectPtr<UTextBlock>> Labels;
 	UPROPERTY() TArray<TObjectPtr<UImage>> Photos;
@@ -99,5 +106,8 @@ private:
 	bool bDone = false;
 	float Time = 0.f;
 	float JoinTime = 0.f;
+	float JoinHover = 0.f;     // 0..1, eased
+	bool bJoinDown = false;
+	TArray<float> PhotoHover;  // 0..1 per photo, eased
 	FGlitchFX Glitch;
 };
