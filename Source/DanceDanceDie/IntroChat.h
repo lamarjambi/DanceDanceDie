@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "GameFramework/GameModeBase.h"
+#include "ProfileSetup.h"
 #include "IntroChat.generated.h"
 
 class UCanvasPanel;
@@ -17,6 +18,7 @@ class USoundBase;
 class UTexture2D;
 class UAudioComponent;
 class UFont;
+class UMaterialInterface;
 
 USTRUCT(BlueprintType)
 struct FIntroChatMessage
@@ -27,6 +29,7 @@ struct FIntroChatMessage
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chat")
 	FString Sender;
 
+	// {Name} = the player's display name from the profile screen (lowercase, chat style)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chat", meta = (MultiLine = true))
 	FString Body;
 
@@ -166,10 +169,33 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intro Chat")
 	float FadeOutTime = 1.5f;
 
+	// phone profile screen (name + character) before the chat
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile")
+	bool bAskProfile = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile")
+	FString ProfileTitle = TEXT("set up your profile");
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile")
+	FString ProfileSubtitle = TEXT("Halloween Booooooooor Crawl wants to add you");
+
+	// one photo each, in this order (max 2)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile")
+	TArray<FProfileCharacter> Characters;
+
+	// opaque UI material with a "Photo" texture param (Scripts/setup_profile_photo.py): captures have alpha 0
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile")
+	TObjectPtr<UMaterialInterface> PhotoMaterial;
+
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 
 private:
+	void StartChat(APlayerController* PC);
+
 	UPROPERTY() TObjectPtr<UIntroChatWidget> Chat;
+	UPROPERTY() TObjectPtr<UProfileSetupWidget> Profile;
 	bool bLeaving = false;
+	bool bProfileDone = false;
+	float ChatGrace = 0.f; // ignore skip keys right after joining (the Enter that joined would skip the chat)
 };

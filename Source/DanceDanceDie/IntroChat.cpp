@@ -14,7 +14,10 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/Engine.h"
+#include "Animation/AnimationAsset.h"
 #include "Engine/Font.h"
+#include "Engine/SkeletalMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "Engine/Texture2D.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -497,19 +500,77 @@ AIntroChatGameMode::AIntroChatGameMode()
 	Add(TEXT("Ava"),  TEXT(""), 0.8f, 1.6f, false, AvaPic.Object);
 	Add(TEXT("Cass"), TEXT("that's literally just your outfit"), 0.7f, 0.9f);
 	Add(TEXT("Ava"),  TEXT("exactly. just lesbianism"), 0.8f, 1.3f);
-	Add(TEXT("Cass"), TEXT("@michelle you better be in costume"), 0.8f, 1.4f);
+	Add(TEXT("Cass"), TEXT("@{Name} you better be in costume"), 0.8f, 1.4f);
 	Add(TEXT("Mateo"),   TEXT("bar is called ultra bar, neon green and pink sign"), 1.0f, 1.4f);
 	Add(TEXT("Ava"),  TEXT("we're heading in"), 0.6f, 1.6f);
 	Add(TEXT("Mateo"),   TEXT("it's sooo quiet in here lol"), 1.2f, 0.6f);
 	Add(TEXT("Mateo"),   TEXT(""), 0.8f, 1.6f, false, BarPic.Object);
 	Add(TEXT("Ade"), TEXT("wait where is everyone"), 0.7f, 0.8f);
 	Add(TEXT("Cass"), TEXT("mateo??"), 0.4f, 1.6f);
-	Add(TEXT("Ade"),   TEXT("michelle hurry"), 1.4f, 1.2f);
+	Add(TEXT("Ade"),   TEXT("{Name} hurry"), 1.4f, 1.2f);
 	Add(TEXT("Ade"),   TEXT("come dance"), 1.8f, 0.9f, true);
 	Add(TEXT("Mateo"),   TEXT("come dance"), 0.3f, 0.5f, true);
 	Add(TEXT("Mateo"),   TEXT("COME DANCE"), 0.2f, 1.4f, true);
 	Add(TEXT(""),      TEXT("Cass left the chat"), 0.f, 1.2f);
 	Add(TEXT(""),      TEXT("Ava left the chat"), 0.f, 1.0f);
+
+	// profile photos
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> MichelleMesh(TEXT("/Game/Characters/Michelle/michelle.michelle"));
+	static ConstructorHelpers::FObjectFinder<UAnimationAsset> MichelleIdle(TEXT("/Game/Mixamo/A_Idle.A_Idle"));
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> AbeMesh(TEXT("/Game/Characters/Abe/abe-walking.abe-walking"));
+	static ConstructorHelpers::FObjectFinder<UAnimationAsset> AbeIdle(TEXT("/Game/Characters/Abe/abe-idle.abe-idle"));
+	auto AddChar = [this](EPlayerCharacter C, USkeletalMesh* Mesh, UAnimationAsset* Idle, float CamHeight, float CamDistance)
+	{
+		FProfileCharacter P;
+		P.Character = C;
+		P.Mesh = Mesh;
+		P.Idle = Idle;
+		P.CameraHeight = CamHeight;
+		P.CameraDistance = CamDistance;
+		Characters.Add(P);
+	};
+	AddChar(EPlayerCharacter::Michelle, MichelleMesh.Object, MichelleIdle.Object, 118.f, 170.f); // framed by eye: she stands shorter than Abe in the world
+	AddChar(EPlayerCharacter::Abe, AbeMesh.Object, AbeIdle.Object, 132.f, 190.f);
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> PhotoMat(TEXT("/Game/UI/M_UI_ProfilePhoto.M_UI_ProfilePhoto"));
+	PhotoMaterial = PhotoMat.Object;
+}
+
+namespace IntroChat
+{
+	// "{Name}" -> the profile name, lowercase like the rest of the chat
+	FString WithName(const FString& S, const FString& Name)
+	{
+		return S.Replace(TEXT("{Name}"), *Name.ToLower(), ESearchCase::IgnoreCase);
+	}
+}
+
+void AIntroChatGameMode::StartChat(APlayerController* PC)
+{
+	const UPlayerProfileSubsystem* ProfileSys = UPlayerProfileSubsystem::Get(this);
+	const FString Name = ProfileSys ? ProfileSys->GetPlayerName() : UPlayerProfileSubsystem::CharacterName(EPlayerCharacter::Michelle);
+
+	Chat = CreateWidget<UIntroChatWidget>(PC, UIntroChatWidget::StaticClass());
+	check(Chat);
+	Chat->Messages = Messages;
+	for (FIntroChatMessage& M : Chat->Messages)
+	{
+		M.Body = IntroChat::WithName(M.Body, Name);
+	}
+	Chat->ChatTitle = ChatTitle;
+	Chat->ChatSubtitle = IntroChat::WithName(ChatSubtitle, Name);
+	Chat->PingSound = PingSound;
+	Chat->CreepySound = CreepySound;
+	Chat->TypingSound = TypingSound;
+	Chat->Background = Background;
+	Chat->EndHoldTime = EndHoldTime;
+	Chat->FadeOutTime = FadeOutTime;
+	Chat->NameColor = NameColor;
+	Chat->AddToViewport(100);
+
+	PC->SetShowMouseCursor(false);
+	PC->SetInputMode(FInputModeGameOnly());
+	PC->SetIgnoreMoveInput(true);
+	PC->SetIgnoreLookInput(true);
 }
 
 void AIntroChatGameMode::BeginPlay()
@@ -531,35 +592,45 @@ void AIntroChatGameMode::Tick(float DeltaSeconds)
 	APlayerController* PC = GetWorld()->GetFirstPlayerController();
 	if (!PC) { return; }
 
-	if (!Chat)
+	// 1. profile screen (name + character)
+	if (bAskProfile && !bProfileDone)
 	{
-		Chat = CreateWidget<UIntroChatWidget>(PC, UIntroChatWidget::StaticClass());
-		check(Chat);
-		Chat->Messages = Messages;
-		Chat->ChatTitle = ChatTitle;
-		Chat->ChatSubtitle = ChatSubtitle;
-		Chat->PingSound = PingSound;
-		Chat->CreepySound = CreepySound;
-		Chat->TypingSound = TypingSound;
-		Chat->Background = Background;
-		Chat->EndHoldTime = EndHoldTime;
-		Chat->FadeOutTime = FadeOutTime;
-		Chat->NameColor = NameColor;
-		Chat->AddToViewport(100);
+		if (!Profile)
+		{
+			Profile = CreateWidget<UProfileSetupWidget>(PC, UProfileSetupWidget::StaticClass()); // reads its options from this game mode
+			check(Profile);
+			Profile->AddToViewport(100);
 
-		PC->SetShowMouseCursor(false);
-		PC->SetInputMode(FInputModeGameOnly());
-		PC->SetIgnoreMoveInput(true);
-		PC->SetIgnoreLookInput(true);
+			FInputModeUIOnly Mode;
+			Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+			PC->SetInputMode(Mode);
+			Profile->FocusName();
+			PC->SetShowMouseCursor(true);
+			PC->SetIgnoreMoveInput(true);
+			PC->SetIgnoreLookInput(true);
+		}
+		Profile->Step(DeltaSeconds);
+		if (!Profile->IsDone()) { return; }
+		Profile->RemoveFromParent();
+		Profile = nullptr;
+		bProfileDone = true;
+		ChatGrace = 0.3f;
 	}
 
+	// 2. the chat
+	if (!Chat)
+	{
+		StartChat(PC);
+	}
+
+	ChatGrace -= DeltaSeconds;
 	static const FKey SkipKeys[] = {
 		EKeys::SpaceBar, EKeys::Enter, EKeys::Escape, EKeys::LeftMouseButton,
 		EKeys::Gamepad_FaceButton_Bottom, EKeys::Gamepad_Special_Right,
 	};
 	for (const FKey& K : SkipKeys)
 	{
-		if (PC->WasInputKeyJustPressed(K)) { Chat->Skip(); break; }
+		if (ChatGrace <= 0.f && PC->WasInputKeyJustPressed(K)) { Chat->Skip(); break; }
 	}
 
 	// scroll the chat history: mouse wheel, up/down / W/S / page keys, gamepad dpad / left stick
