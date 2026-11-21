@@ -102,6 +102,31 @@
   Follow = `ScrollToEnd` every frame (`bFollow`), not once per message: wrapped text gets its 2nd line a frame late, so a one-off left the newest bubble cut off.
 - After the last message: EndHold until Space → Skip() → FadeOut → NextLevel.
 - One `NameColor` for every name; creepy messages stay red.
+- Look = the profile screen's: square outlined bubbles, header + messages in URetainerBox `ChatRetainer` with `M_UI_PS1`, so all
+  text is ≥ 40 px. The shader cuts alpha at 0.5: `DimOpacity` under 0.5 makes old messages vanish.
+- Calm (`Glitch` 0) until the creepy texts. Each one fires a burst and raises the steady glitch (`Steady[]` in Step); after the
+  third it stays glitchy to the end (user choice).
+
+## Profile screen (`ProfileSetup.*`) — all C++, shown by the IntroChat game mode before the chat
+- Character select that reads as a text invite (user choice, not a fight-game select): invite = message bubble, picked character =
+  the chat's typing bubble over their head, name = message bar with JOIN CHAT as its send button. Font = VT323 only (no Rubik here).
+- Everything goes through `M_UI_PS1` (text under ~40 px gets eaten; the small controls hint is outside it on purpose).
+  Colours, glitch: `BP_IntroChatGameMode` Class Defaults > Profile (no rebuild).
+- Calm until something is hovered (user choice): the material's `Glitch` param (default 0.35 = rows tearing all the time) is set
+  to 0 every tick, and to `HoverGlitch` only on the piece under the mouse. The material glitches a whole retainer, so the still
+  parts, each character, the name field and the button each have their own, side by side. Never nest them (pixelated + brightened
+  twice). Small retainers must take `BlockPx` from the full-screen one (their own height gives tiny blocks).
+- JOIN CHAT keeps its glitch burst into the chat (user choice).
+- Widgets that overlap go in a UOverlay (one layer per child). Siblings of a box share a layer and their draw order is not fixed:
+  the opaque character picture covered the bubble.
+- Characters = live scene captures (unlit base colour, black background, no alpha). The backdrop is black so no box shows around
+  them: any other backdrop colour brings the box back.
+- Same `CameraHeight` / `CameraDistance` for every character = true relative heights. The bubble height comes from the mesh bounds.
+- The idle runs only for the picked character and the one under the mouse.
+- No "MICHELLE" / "ABE" on screen and no pre-filled name (user choice: players make up their own). The field starts empty; only a
+  name the player typed before comes back. Joining with it empty still falls back to the character's name (the chat needs one).
+- `UImage::SetDesiredSizeOverride` is dropped when called before the slate widget exists (NativeOnInitialized): set the brush `ImageSize`.
+- `MaterialEditingLibrary.delete_all_material_expressions` crashes in a commandlet (`!IsRooted`): run material setup scripts in the editor.
 
 ## NPC talk (`NPCTalk.*`) + footsteps
 - One `NPC_<Name>_Talk` (ANPCTalker) per city NPC: edit `LINES` in `Scripts/setup_npc_talk.py`, re-run.

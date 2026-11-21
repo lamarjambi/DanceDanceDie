@@ -1,4 +1,5 @@
 // intro group chat cutscene. everything is built in c++ so no wbp needed.
+// same look as the profile screen before it (square bubbles, M_UI_PS1); calm until the creepy texts, then it glitches for good.
 // edit messages in BP_IntroChatGameMode class defaults.
 
 #pragma once
@@ -119,6 +120,8 @@ private:
 	int32 Index = 0;
 	bool bPlayedCreepy = false;
 	bool bFollow = true; // history stays scrolled to the newest message
+	int32 CreepyShown = 0; // creepy texts so far: each one leaves the shader more glitchy
+	float BurstLeft = 0.f; // glitch burst after a creepy text, counts down
 };
 
 UCLASS()
@@ -190,12 +193,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile")
 	TObjectPtr<UMaterialInterface> PhotoMaterial;
 
-	// mouse over JOIN CHAT: the pill fills with this (menu lime) and grows
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Hover")
+	// menu lime: title, the picked character's name + typing bubble, the name field, the JOIN CHAT button
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Look")
 	FLinearColor ProfileHoverColor = FLinearColor(0.25f, 0.9f, 0.08f);
 
-	// outline of the hovered button / photo + selected-text highlight (menu magenta)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Hover")
+	// menu magenta: shadows, NAME, hovered names + button, selected-text highlight
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Look")
 	FLinearColor ProfileAccentColor = FLinearColor(0.45f, 0.02f, 0.42f);
 
 	// JOIN CHAT: the button turns this colour and the whole profile screen glitches for JoinGlitchTime, then the chat starts
@@ -209,7 +212,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Join Glitch")
 	TObjectPtr<USoundBase> JoinGlitchSound;
 
-	// M_UI_PS1, only switched on for the glitch
+	// M_UI_PS1: over the whole profile screen (like the menu), and what the join glitch drives
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Join Glitch")
 	TObjectPtr<UMaterialInterface> JoinGlitchEffect;
 

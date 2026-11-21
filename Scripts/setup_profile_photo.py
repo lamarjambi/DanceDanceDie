@@ -2,6 +2,7 @@ import unreal
 # /Game/UI/M_UI_ProfilePhoto: UI material for the live photos on the profile screen (ProfileSetup.cpp).
 # a scene capture writes alpha 0, so a plain UImage draws it invisible: this one is opaque and ignores alpha.
 # texture param "Photo" (the render target), slightly pixelated (PIXELS_X x PIXELS_Y blocks) to match the PS1 look.
+# run it in the editor: delete_all_material_expressions crashes in a commandlet (Assertion !IsRooted).
 # safe to re-run (rebuilds the graph in place):
 #   exec(open(unreal.Paths.project_dir()+'Scripts/setup_profile_photo.py').read())
 PATH = '/Game/UI/M_UI_ProfilePhoto'

@@ -33,9 +33,12 @@ namespace IntroChat
 	constexpr float PopTime = 0.38f;
 	constexpr float LeaveTime = 0.45f;
 	constexpr int32 BrightCount = 4; // newest N stay full opacity, older ones dim
-	constexpr float DimOpacity = 0.4f;
-	constexpr float BubbleMaxWidth = 520.f;
-	constexpr float PhotoWidth = 320.f;
+	constexpr float DimOpacity = 0.6f;   // M_UI_PS1 cuts alpha at 0.5: anything dimmer disappears
+	constexpr float BubbleMaxWidth = 760.f;
+	constexpr float PhotoWidth = 340.f;
+	constexpr float Line = 4.f;          // bubble outline, = profile screen
+	constexpr float PixelRows = 270.f;   // PS1 blocks per screen height, = profile screen + credits
+	constexpr float BurstTime = 0.7f;    // glitch burst when a creepy text lands
 	constexpr int32 PhotoWeight = 4; // unused: nothing is evicted any more (history is scrollable)
 	constexpr float ScrollStep = 90.f;   // px per wheel tick
 	constexpr float ScrollSpeed = 900.f; // px/s while a key/stick is held
@@ -60,6 +63,11 @@ void UIntroChatWidget::NativeOnInitialized()
 	// font comes from BP_IntroChatGameMode > Chat Font
 	const AIntroChatGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AIntroChatGameMode>() : nullptr;
 	HeavyFont = GM ? GM->ChatFont.Get() : nullptr;
+	// same look as the profile screen before it: the game's lime + magenta, everything through M_UI_PS1
+	const FLinearColor Lime = GM ? GM->ProfileHoverColor : FLinearColor::White;
+	const FLinearColor Magenta = GM ? GM->ProfileAccentColor : FLinearColor::Black;
+	UMaterialInterface* Ps1 = GM ? GM->JoinGlitchEffect.Get() : nullptr;
+	if (!Ps1) { UE_LOG(LogIntroChat, Error, TEXT("IntroChat: Join Glitch Effect (M_UI_PS1) not set: no PS1 look, the creepy texts only shake")); }
 	if (!HeavyFont)
 	{
 		UE_LOG(LogIntroChat, Error, TEXT("IntroChat: Chat Font not set, falling back to Roboto"));
@@ -76,23 +84,37 @@ void UIntroChatWidget::NativeOnInitialized()
 
 	// backdrop
 	Backdrop = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Backdrop"));
-	Backdrop->SetColorAndOpacity(FLinearColor(0.006f, 0.006f, 0.01f, 1.f));
+	Backdrop->SetColorAndOpacity(FLinearColor::Black); // = profile screen
 	Backdrop->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
 	Fill(Root->AddChildToCanvas(Backdrop));
+
+	// header + messages sit in a retainer with M_UI_PS1. its row glitch is off until the creepy texts (Step).
+	// text under ~40 px gets eaten by the pixelation, so everything is bigger than a normal chat
+	URetainerBox* Ret = WidgetTree->ConstructWidget<URetainerBox>(URetainerBox::StaticClass(), TEXT("ChatRetainer"));
+	if (Ps1)
+	{
+		Ret->SetEffectMaterial(Ps1);
+		Ret->SetTextureParameter(TEXT("Texture"));
+	}
+	Fill(Root->AddChildToCanvas(Ret));
+	UCanvasPanel* Stage = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("Stage"));
+	Ret->AddChild(Stage);
 
 	// header
 	UVerticalBox* Header = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Header"));
 	TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
-	TitleText->SetFont(SenderFont(34));
-	TitleText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+	TitleText->SetFont(SenderFont(52));
+	TitleText->SetColorAndOpacity(FSlateColor(Lime));
+	TitleText->SetShadowColorAndOpacity(Magenta);
+	TitleText->SetShadowOffset(FVector2D(4.f, 4.f));
 	SubtitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Subtitle"));
-	SubtitleText->SetFont(BodyFont(19));
+	SubtitleText->SetFont(BodyFont(40));
 	SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(0.55f, 0.55f, 0.6f, 1.f)));
 	Header->AddChildToVerticalBox(TitleText);
 	Header->AddChildToVerticalBox(SubtitleText);
 	{
-		UCanvasPanelSlot* S = Root->AddChildToCanvas(Header);
-		S->SetAnchors(FAnchors(0.5f, 0.06f));
+		UCanvasPanelSlot* S = Stage->AddChildToCanvas(Header);
+		S->SetAnchors(FAnchors(0.5f, 0.045f));
 		S->SetAlignment(FVector2D(0.f, 0.f));
 		S->SetAutoSize(true);
 		S->SetPosition(FVector2D(0.f, 0.f));
@@ -110,12 +132,12 @@ void UIntroChatWidget::NativeOnInitialized()
 	Stack->AddChildToVerticalBox(Spacer);
 	Scroll->AddChild(Stack);
 	{
-		UCanvasPanelSlot* S = Root->AddChildToCanvas(Scroll);
-		S->SetAnchors(FAnchors(0.5f, 0.15f, 0.92f, 0.9f));
+		UCanvasPanelSlot* S = Stage->AddChildToCanvas(Scroll);
+		S->SetAnchors(FAnchors(0.5f, 0.165f, 0.94f, 0.9f));
 		S->SetOffsets(FMargin(0.f));
 	}
 
-	// skip hint
+	// skip hint: small, so it stays outside the pixelation
 	UTextBlock* Hint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SkipHint"));
 	Hint->SetText(FText::FromString(TEXT("press/click anywhere to skip")));
 	Hint->SetFont(BodyFont(18));
@@ -172,21 +194,22 @@ UWidget* UIntroChatWidget::MakeBubble(const FString& Sender, const FString& Body
 	UBorder* B = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 	FSlateBrush Brush;
 	Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
-	Brush.TintColor = FSlateColor(bCreepy ? FLinearColor(0.3f, 0.f, 0.02f, 0.95f) : FLinearColor(0.035f, 0.035f, 0.045f, 0.9f));
-	Brush.OutlineSettings.CornerRadii = FVector4(20.f, 20.f, 20.f, 6.f); // tail corner bottom-left
+	// square with a hard outline, like the bubbles on the profile screen (user choice: no rounded phone-app bubbles)
+	Brush.TintColor = FSlateColor(bCreepy ? FLinearColor(0.3f, 0.f, 0.02f, 1.f) : FLinearColor(0.02f, 0.02f, 0.03f, 1.f));
+	Brush.OutlineSettings.CornerRadii = FVector4(0.f, 0.f, 0.f, 0.f);
 	Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
-	Brush.OutlineSettings.Width = bCreepy ? 1.5f : 1.f;
-	Brush.OutlineSettings.Color = FSlateColor(bCreepy ? FLinearColor(1.f, 0.1f, 0.1f, 0.7f) : FLinearColor(1.f, 1.f, 1.f, 0.07f));
+	Brush.OutlineSettings.Width = IntroChat::Line;
+	Brush.OutlineSettings.Color = FSlateColor(bCreepy ? FLinearColor(1.f, 0.1f, 0.1f, 1.f) : FLinearColor::White);
 	B->SetBrush(Brush);
-	B->SetPadding(FMargin(18.f, 10.f, 18.f, 12.f));
+	B->SetPadding(FMargin(20.f, 4.f, 20.f, 10.f));
 
 	UVerticalBox* V = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 
 	UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	NameText->SetText(FText::FromString(Sender.ToUpper()));
-	NameText->SetFont(SenderFont(16));
+	NameText->SetFont(SenderFont(40));
 	NameText->SetColorAndOpacity(FSlateColor(bCreepy ? FLinearColor(1.f, 0.2f, 0.2f) : NameColor));
-	V->AddChildToVerticalBox(NameText)->SetPadding(FMargin(0.f, 0.f, 0.f, 3.f));
+	V->AddChildToVerticalBox(NameText);
 
 	if (Photo)
 	{
@@ -200,12 +223,12 @@ UWidget* UIntroChatWidget::MakeBubble(const FString& Sender, const FString& Body
 		PhotoBox->SetWidthOverride(IntroChat::PhotoWidth);
 		PhotoBox->SetHeightOverride(IntroChat::PhotoWidth * H / W);
 		PhotoBox->SetContent(Img);
-		V->AddChildToVerticalBox(PhotoBox)->SetPadding(FMargin(0.f, 2.f, 0.f, Body.IsEmpty() ? 0.f : 6.f));
+		V->AddChildToVerticalBox(PhotoBox)->SetPadding(FMargin(0.f, 4.f, 0.f, Body.IsEmpty() ? 4.f : 6.f));
 	}
 
 	UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Text->SetText(FText::FromString(Body));
-	Text->SetFont(BodyFont(28));
+	Text->SetFont(BodyFont(46));
 	Text->SetColorAndOpacity(FSlateColor(bCreepy ? FLinearColor(1.f, 0.85f, 0.85f) : FLinearColor::White));
 	Text->SetAutoWrapText(true);
 	if (!Photo || !Body.IsEmpty())
@@ -223,7 +246,7 @@ UWidget* UIntroChatWidget::MakeSystemLine(const FString& Body)
 {
 	UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	T->SetText(FText::FromString(Body));
-	T->SetFont(BodyFont(19));
+	T->SetFont(BodyFont(40));
 	T->SetColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.65f, 1.f)));
 	return T;
 }
@@ -231,7 +254,7 @@ UWidget* UIntroChatWidget::MakeSystemLine(const FString& Body)
 void UIntroChatWidget::PushWidget(UWidget* W, bool bCreepy, bool bSystem, int32 Weight)
 {
 	UVerticalBoxSlot* S = Stack->AddChildToVerticalBox(W);
-	S->SetPadding(FMargin(0.f, 0.f, 0.f, 12.f));
+	S->SetPadding(FMargin(0.f, 0.f, 0.f, 14.f));
 	S->SetHorizontalAlignment(bSystem ? HAlign_Center : HAlign_Left);
 
 	W->SetRenderOpacity(0.f);
@@ -305,6 +328,12 @@ void UIntroChatWidget::ShowMessage(const FIntroChatMessage& M)
 	{
 		bPlayedCreepy = true;
 		UGameplayStatics::PlaySound2D(this, CreepySound);
+	}
+	if (M.bCreepy)
+	{
+		// each creepy text: a burst, and the screen stays a step more broken afterwards (Step)
+		++CreepyShown;
+		BurstLeft = IntroChat::BurstTime;
 	}
 }
 
@@ -462,6 +491,25 @@ void UIntroChatWidget::Step(float Dt)
 		break;
 	}
 
+	// the shader: calm (pixels + dither, no torn rows) until the creepy texts. each one fires a burst and leaves the screen
+	// more broken than before; after the third it never settles (user choice: "at the end it's all just glitch")
+	if (URetainerBox* Ret = WidgetTree->FindWidget<URetainerBox>(TEXT("ChatRetainer")))
+	{
+		BurstLeft = FMath::Max(0.f, BurstLeft - Dt);
+		const float Burst = BurstLeft / IntroChat::BurstTime; // 1 -> 0
+		const int32 Level = FMath::Min(CreepyShown, 3);
+		static const float Steady[] = { 0.f, 1.5f, 4.f, 10.f }; // M_UI_PS1 "Glitch" that stays on after 0 / 1 / 2 / 3 creepy texts
+		if (UMaterialInstanceDynamic* Mat = Ret->GetEffectMaterial())
+		{
+			const float Block = FGlitchFX::BlockPxFor(Ret, IntroChat::PixelRows);
+			if (Block > 0.f) { Mat->SetScalarParameterValue(TEXT("BlockPx"), Block * (1.f + FMath::RandRange(0, 1) * FMath::RoundToFloat(Burst))); }
+			Mat->SetScalarParameterValue(TEXT("Glitch"), Steady[Level] + 25.f * Burst);
+			Mat->SetScalarParameterValue(TEXT("Split"), 0.6f + 0.5f * Level + FMath::FRandRange(0.f, 4.f) * Burst);
+		}
+		const float Shake = 14.f * Burst + (Level >= 3 ? 2.f : 0.f);
+		Ret->SetRenderTranslation(FVector2D(FMath::FRandRange(-Shake, Shake), FMath::FRandRange(-Shake, Shake) * 0.3f));
+	}
+
 	// stick to the newest message unless the player scrolled up to reread. Every frame, not once per message:
 	// a wrapped bubble only gets its 2nd line a frame after it is added, so a one-off ScrollToEnd left it cut off.
 	if (bFollow) { IntroChat::GetScroll(this)->ScrollToEnd(); }
@@ -536,8 +584,9 @@ AIntroChatGameMode::AIntroChatGameMode()
 		P.CameraDistance = CamDistance;
 		Characters.Add(P);
 	};
-	AddChar(EPlayerCharacter::Michelle, MichelleMesh.Object, MichelleIdle.Object, 118.f, 170.f); // framed by eye: she stands shorter than Abe in the world
-	AddChar(EPlayerCharacter::Abe, AbeMesh.Object, AbeIdle.Object, 132.f, 190.f);
+	// full body, same camera for both = true relative heights (look-at height, distance)
+	AddChar(EPlayerCharacter::Michelle, MichelleMesh.Object, MichelleIdle.Object, 92.f, 284.f);
+	AddChar(EPlayerCharacter::Abe, AbeMesh.Object, AbeIdle.Object, 92.f, 284.f);
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> PhotoMat(TEXT("/Game/UI/M_UI_ProfilePhoto.M_UI_ProfilePhoto"));
 	PhotoMaterial = PhotoMat.Object;
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Ps1(TEXT("/Game/PostProcess/M_UI_PS1.M_UI_PS1"));
